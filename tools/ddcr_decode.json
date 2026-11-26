@@ -1,0 +1,6 @@
+{
+ "_nota": "Rellenar con offsets de DDT4ALL (DDCR_*) / pyren. byte = indice tras '61 xx'. 16 bits little endian (le:true). Ejemplo: {\"name\":\"rpm\",\"byte\":0,\"len\":2,\"le\":true,\"scale\":1,\"offset\":0,\"unit\":\"rpm\"}",
+ "A0": [],
+ "A1": [],
+ "A2": []
+}

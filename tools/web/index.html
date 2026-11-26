@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clio K-Line</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#69707a;--line:#dde1e6;--acc:#0a66c2;--chg:#ffe28a;--err:#c62828;--ok:#2e7d32}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--card:#1b1e22;--fg:#e6e8eb;--mut:#9aa1aa;--line:#2c3137;--acc:#5aa0ff;--chg:#6b5400;--err:#ff6b6b;--ok:#6fcf73}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe UI,sans-serif}
+header{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card)}
+header b{font-size:16px;margin-right:8px}
+#st{color:var(--mut);font-size:12px}
+nav{display:flex;gap:4px;padding:8px 16px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{background:none;color:var(--mut);border-radius:6px 6px 0 0;padding:8px 14px}
+nav button.on{background:var(--card);color:var(--fg);border:1px solid var(--line);border-bottom-color:var(--card);margin-bottom:-1px}
+.tab{display:none;gap:12px;padding:12px 16px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.tab.on{display:grid}
+section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
+section.wide{grid-column:1/-1}
+h2{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}
+input,select,button{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+button{background:var(--acc);color:#fff;border:0;cursor:pointer}
+button.sec{background:var(--bg);color:var(--fg);border:1px solid var(--line)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+pre{background:var(--bg);padding:8px;border-radius:6px;overflow:auto;max-height:320px;margin:6px 0 0;font:12px/1.35 Consolas,monospace}
+table{border-collapse:collapse;font:12px Consolas,monospace}
+td,th{border:1px solid var(--line);padding:2px 5px;text-align:center}
+th{color:var(--mut);font-weight:normal}
+td.c{background:var(--chg)}
+td.l{text-align:left}
+tr.ro td{color:var(--mut)}
+.scroll{overflow-x:auto}
+.err{color:var(--err)}.ok{color:var(--ok)}
+.note{color:var(--mut);font-size:12px}
+.cards{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.card{border:1px solid var(--line);border-radius:8px;padding:8px}
+.card small{color:var(--mut);display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card b{font-size:20px;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<header>
+  <b>Clio II 1.5 dCi · línea K</b>
+  <select id="be"><option value="sim">Simulador</option><option value="elm">ELM327 / OBDLink / vLinker</option><option value="bridge">Puente ESP</option></select>
+  <input id="addr" placeholder="COM5 · tcp:192.168.4.1:23" size="20">
+  <input id="baud" placeholder="baudios" size="6">
+  <select id="ecu"></select>
+  <select id="init"><option value="fast">fast init</option><option value="slow">5 baudios</option></select>
+  <button id="bc">Conectar</button><button id="bsel" class="sec">Cambiar UCE</button><button id="bd" class="sec">Desconectar</button>
+  <span id="st">desconectado</span>
+</header>
+<div id="ask" style="display:none;padding:10px 16px;background:var(--chg);color:var(--fg)">
+  <b>Claude pregunta:</b> <span id="askt"></span>
+  <div class="row" style="margin:6px 0 0"><button id="aok">Hecho</button><button id="ano" class="sec">No puedo</button>
+    <input id="atx" placeholder="o escribe la respuesta…" size="30"><button id="asend" class="sec">Enviar</button></div>
+</div>
+<nav id="nav"><button data-t="tab-ai">Claude en vivo</button><button data-t="tab-dash" class="on">Tablero</button><button data-t="tab-dtc">Fallos</button><button data-t="tab-cfg">Configuración</button><button data-t="tab-learn">Aprendizaje</button></nav>
+
+<div class="tab" id="tab-ai">
+<section class="wide">
+  <h2>Claude en vivo</h2>
+  <div class="row"><input id="goal" placeholder="objetivo (vacío = entender todo el coche y recomendar)" size="50">
+    <button id="ais">Empezar</button><button id="aix" class="sec">Parar</button></div>
+  <p class="note">Claude se conecta a esta misma sesión: lee, explora todas las centralitas, te pide acciones arriba (freno, embrague…), guarda lo aprendido y escribe un informe con averías, posibles problemas y recomendaciones. Nunca escribe en las centralitas.</p>
+  <pre id="ailog" style="max-height:480px"></pre>
+</section>
+<section>
+  <h2>Exploración automática (sin IA)</h2>
+  <div class="row"><label><input type="checkbox" id="xfull" checked> todos los LIDs (lento)</label> muestreo <input id="xs" value="5" size="3"> s
+    <button id="xgo">Explorar todas las UCE</button><button id="xst" class="sec">Parar</button></div>
+  <pre id="xout"></pre>
+</section>
+<section>
+  <h2>Informes</h2>
+  <div class="row"><button id="rpl" class="sec">Actualizar</button></div>
+  <div id="rpls"></div>
+  <pre id="rpt" style="max-height:480px"></pre>
+</section>
+</div>
+
+<div class="tab on" id="tab-dash">
+<section class="wide">
+  <h2>Datos en vivo</h2>
+  <div class="row">LIDs <input id="lids" value="A0,A1,A2" size="14"> cada <input id="per" value="500" size="4"> ms <button id="bl">Iniciar</button>
+    <span class="note">Variables de la tabla aprendida (local) y de la base DDT4ALL cargada.</span></div>
+  <div id="cards" class="cards"></div>
+  <p id="cardsnote" class="note"></p>
+</section>
+</div>
+
+<div class="tab" id="tab-dtc">
+<section>
+  <h2>Averías</h2>
+  <div class="row"><button id="bf">Leer averías (17 / 18)</button></div>
+  <div id="dtc"></div>
+  <p class="note">Borrado (14) bloqueado: hazlo a mano con DDT4ALL/Renolink.</p>
+</section>
+<section>
+  <h2>Identificación</h2>
+  <div class="row"><button id="bi">Leer 2180</button></div>
+  <pre id="idout"></pre>
+</section>
+</div>
+
+<div class="tab" id="tab-cfg">
+<section>
+  <h2>Centralitas</h2>
+  <div class="row"><button id="bes">Probar todas</button><span class="note">init + 2180 en cada dirección; vuelve a la actual.</span></div>
+  <div id="ecus"></div>
+</section>
+<section>
+  <h2>Base DDT4ALL</h2>
+  <div id="dbst" class="note"></div>
+  <div class="row">Endian <select id="dbend"><option value="">el de la base</option><option value="Little" selected>Little (DDCR)</option><option value="Big">Big</option></select></div>
+  <div id="dbcand"></div>
+  <p class="note">La base no es pública: genera <code>ecu.zip</code> con <code>ddt4all -z</code> desde tu DDT2000 y cópialo en <code>ddt/</code>. Reinicia la web.</p>
+</section>
+<section class="wide">
+  <h2>Peticiones de la base (UCE actual)</h2>
+  <div class="row" id="quick"></div>
+  <div class="row"><input id="rqf" placeholder="filtrar (regex): config|vitesse|frein|regul…" size="30"><span class="note">Gris = escritura: solo DDT4ALL a mano, con copia y cargador.</span></div>
+  <p class="note">Llaves/antiarranque: aquí solo se lee el estado (UCH 26). Registrar llaves necesita el código de seguridad del coche y se hace con Renolink/CLIP.</p>
+  <div class="scroll" id="rqs"></div>
+  <pre id="rqout"></pre>
+</section>
+</div>
+
+<div class="tab" id="tab-learn">
+<section>
+  <h2>Grabación con marcas</h2>
+  <div class="row">nombre <input id="rn" value="prueba" size="10"> LIDs <input id="rl" value="A0,A1,A2" size="12"> cada <input id="rp" value="200" size="4"> ms</div>
+  <div class="row"><button id="rs">Grabar</button><button id="rx" class="sec">Parar</button><button id="ra" class="sec">Analizar</button></div>
+  <div class="row" id="marks"></div>
+  <div class="row"><input id="rm" placeholder="otra marca…" size="16"><button id="rmb" class="sec">Marcar</button></div>
+  <p class="note">Primera marca = referencia (reposo). Cambia la acción, pulsa su marca y espera 3-5 s.</p>
+  <pre id="rout"></pre>
+</section>
+<section>
+  <h2>Variables aprendidas</h2>
+  <div class="row"><input id="vl" placeholder="LID" size="3"><input id="vn" placeholder="nombre" size="10"><input id="vb" placeholder="byte" size="3">
+    <input id="vlen" placeholder="len" value="1" size="2"><input id="vbit" placeholder="bit" size="2"></div>
+  <div class="row"><input id="vs" placeholder="escala" value="1" size="5"><input id="vo" placeholder="offset" value="0" size="5"><input id="vu" placeholder="unidad" size="5">
+    <label><input type="checkbox" id="vle" checked> little endian</label><button id="vsave">Guardar</button></div>
+  <div class="scroll" id="vars"></div>
+</section>
+<section class="wide">
+  <h2>Bytes en vivo</h2>
+  <p class="note">Usa los LIDs del Tablero. Amarillo = cambió. u16 = little endian (byte i, i+1).</p>
+  <div id="live"></div>
+</section>
+<section>
+  <h2>Escaneo de LIDs (21 xx)</h2>
+  <div class="row">de <input id="s0" value="01" size="3"> a <input id="s1" value="FF" size="3"><button id="bs">Escanear</button></div>
+  <pre id="scan"></pre>
+</section>
+<section>
+  <h2>Consola</h2>
+  <div class="row"><input id="cl" placeholder="21A1 · ATRV · STATUS · SNIFF ON" size="28"><button id="bk">Enviar</button><button id="bsl" class="sec">Log serie</button></div>
+  <pre id="con"></pre>
+  <p class="note">Solo lectura: 10C0, 3E, 21, 17, 18, 1A (+ AT en ELM, comandos del puente).</p>
+</section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const hx=n=>n.toString(16).toUpperCase().padStart(2,'0');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,body){
+  const r=await fetch(p,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});
+  const j=await r.json(); if(!r.ok) throw new Error(j.error); return j;
+}
+const show=(el,x)=>$(el).textContent=typeof x==='string'?x:JSON.stringify(x,null,1);
+async function guard(el,fn){try{await fn()}catch(e){show(el,'ERROR: '+e.message)}}
+$('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;
+  document.querySelectorAll('nav button,.tab').forEach(x=>x.classList.remove('on'));e.target.classList.add('on');$(t).classList.add('on');
+  if(t==='tab-cfg')loadCfg();if(t==='tab-learn')loadVars()};
+
+async function status(){
+  const s=await api('/api/status');
+  if(!$('ecu').options.length) for(const[k,v]of s.ecus) $('ecu').add(new Option(k+' '+v,k));
+  $('st').innerHTML=(s.connected?`<span class="ok">conectado</span> · ${s.backend} · UCE ${s.ecu}`:'desconectado')+
+    (s.recording?` · <span class="err">● grabando ${esc(s.rec_label)} (${s.rec_samples})</span>`:'')+
+    ` · base DDT: ${s.db.loaded?esc(s.db.loaded):(s.db.files?s.db.files+' archivos':'no')}`;
+  return s;
+}
+setInterval(()=>status().catch(()=>{}),2000);
+const conn=()=>({backend:$('be').value,address:$('addr').value,baud:$('baud').value,ecu:$('ecu').value,init:$('init').value});
+$('bc').onclick=()=>guard('idout',async()=>{show('idout','conectando…');const r=await api('/api/connect',conn());show('idout',r);status()});
+$('bsel').onclick=()=>guard('idout',async()=>{const r=await api('/api/select_ecu',conn());show('idout',r);status()});
+$('bd').onclick=()=>guard('idout',async()=>{stopLive();await api('/api/disconnect',{});status()});
+
+// ---- tablero + bytes en vivo (un solo bucle) ----
+let timer=null,prev={};
+function stopLive(){clearTimeout(timer);timer=null;$('bl').textContent='Iniciar'}
+async function tick(){
+  try{
+    const d=await api('/api/live?lids='+encodeURIComponent($('lids').value));
+    let cards=[];
+    $('live').innerHTML=Object.entries(d.lids).map(([lid,x])=>{
+      if(x.error) return `<p class="err">21${lid}: ${esc(x.error)}</p>`;
+      cards.push(...x.decoded.map(v=>({...v,lid})));
+      const b=x.bytes,p=prev[lid]||b;prev[lid]=b;
+      const cell=(v,i)=>`<td${v!==p[i]?' class="c"':''}>`;
+      return `<p><b>21${lid}</b></p><div class="scroll"><table>
+        <tr><th>byte</th>${b.map((_,i)=>`<th>${i}</th>`).join('')}</tr>
+        <tr><th>hex</th>${b.map((v,i)=>cell(v,i)+hx(v)+'</td>').join('')}</tr>
+        <tr><th>dec</th>${b.map((v,i)=>cell(v,i)+v+'</td>').join('')}</tr>
+        <tr><th>u16</th>${b.map((v,i)=>`<td>${i+1<b.length?v|b[i+1]<<8:''}</td>`).join('')}</tr></table></div>`}).join('');
+    $('cards').innerHTML=cards.map(v=>`<div class="card"><small title="${esc(v.name)}">${esc(v.name)}</small><b>${esc(v.value)}</b> ${esc(v.unit)}<small>21${v.lid} · byte ${v.byte} · ${v.src}</small></div>`).join('');
+    $('cardsnote').textContent=cards.length?'':'Sin variables definidas todavía: carga la base DDT (Configuración) o enséñalas en Aprendizaje.';
+  }catch(e){$('cards').innerHTML=`<p class="err">${esc(e.message)}</p>`;return stopLive()}
+  if(timer!==null) timer=setTimeout(tick,+$('per').value||500);
+}
+$('bl').onclick=()=>{if(timer!==null)return stopLive();prev={};timer=0;$('bl').textContent='Parar';tick()};
+
+// ---- fallos ----
+$('bf').onclick=()=>guard('idout',async()=>{const d=await api('/api/dtc');
+  $('dtc').innerHTML=['17','18'].map(s=>{const x=d[s];if(x.error)return `<p class="err">${s}: ${esc(x.raw)}</p>`;
+    return `<p>Servicio ${s}: ${x.count} avería(s)</p><table><tr><th>código</th><th>estado</th><th>nombre (DDT)</th></tr>${x.dtc.map(e=>`<tr><td>${e.code}</td><td>${e.status}</td><td class="l">${esc(e.name)}</td></tr>`).join('')}</table>`}).join('')});
+$('bi').onclick=()=>guard('idout',async()=>show('idout',await api('/api/ident')));
+
+// ---- configuracion ----
+let reqs=[];
+async function loadCfg(){
+  await guard('rqout',async()=>{
+    const s=await api('/api/db/status');
+    $('dbst').textContent=s.files?`${s.files} archivos · cargado: ${s.loaded||'ninguno'} · endian ${s.endian} · ${s.requests} peticiones`:'Sin base en ddt/.';
+    $('dbcand').innerHTML=s.candidatos.length?`<table><tr><th>archivo (UCE ${esc($('ecu').value)})</th><th>nombre</th><th></th></tr>${s.candidatos.map(c=>`<tr><td class="l">${esc(c.file)}</td><td class="l">${esc(c.ecuname)}</td><td><button class="sec" data-f="${esc(c.file)}">Cargar</button></td></tr>`).join('')}</table>`:'';
+    reqs=(await api('/api/db/requests')).requests;renderReqs();
+  });
+}
+$('dbcand').onclick=e=>{const f=e.target.dataset.f;if(f)guard('rqout',async()=>{await api('/api/db/load',{file:f,endian:$('dbend').value});loadCfg()})};
+function renderReqs(){let f;try{f=new RegExp($('rqf').value,'i')}catch{f=/./}
+  $('rqs').innerHTML=reqs.length?`<table><tr><th>petición</th><th>envía</th><th>datos</th><th></th></tr>${reqs.filter(r=>f.test(r.name+' '+r.datos.join(' '))).slice(0,300).map(r=>
+    `<tr class="${r.lectura?'':'ro'}"><td class="l">${esc(r.name)}</td><td>${esc(r.sent)}</td><td class="l">${esc(r.datos.slice(0,6).join(', '))}${r.datos.length>6?'…':''}</td><td>${r.lectura?`<button class="sec" data-r="${esc(r.name)}">Leer</button>`:'DDT4ALL'}</td></tr>`).join('')}</table>`:'<p class="note">Carga un archivo de la base para ver sus peticiones.</p>'}
+$('rqf').oninput=renderReqs;
+[['Inyección','7A','regime|injec|rail|turbo|temp|debit|pedale'],['Regulador','7A','regul|limit|vitesse|cf582|lc036'],['Freno/embrague','7A','frein|embray|contact'],
+ ['Llaves/antiarranque','26','cl[eé]|key|antid|transp|badge|apprent|code'],['Luces','26','feu|lamp|eclair|clignot|phare'],['Config','7A','config|cf\\d|lc\\d'],
+ ['ABS','28','.'],['Airbag','2C','.'],['Cuadro','51','.']].forEach(([n,e,re])=>{const b=document.createElement('button');b.className='sec';b.textContent=`${n} (${e})`;
+  b.onclick=()=>guard('rqout',async()=>{$('ecu').value=e;$('rqf').value=re;
+    if((await status()).connected&&(await status()).ecu!==e) show('rqout',await api('/api/select_ecu',conn()));loadCfg()});$('quick').append(b)});
+
+// ---- Claude en vivo, exploracion, informes, preguntas ----
+let aiNext=0,aiTimer=null;
+async function aiPoll(){try{const r=await api('/api/ai/log?since='+aiNext);aiNext=r.next;
+  if(r.lines.length){$('ailog').textContent+=r.lines.join('\n')+'\n';$('ailog').scrollTop=1e9}
+  if(r.running) aiTimer=setTimeout(aiPoll,1000); else {aiTimer=null;loadReports()}}catch(e){aiTimer=null}}
+$('ais').onclick=()=>guard('ailog',async()=>{$('ailog').textContent='';aiNext=0;await api('/api/ai/start',{goal:$('goal').value});if(!aiTimer)aiPoll()});
+$('aix').onclick=()=>guard('ailog',()=>api('/api/ai/stop',{}));
+const answer=a=>guard('ailog',async()=>{await api('/api/ai/answer',{answer:a});$('ask').style.display='none';$('atx').value=''});
+$('aok').onclick=()=>answer('hecho');$('ano').onclick=()=>answer('no puedo');$('asend').onclick=()=>answer($('atx').value);
+let jobTimer=null;
+async function jobPoll(){const j=await api('/api/job');show('xout',j);jobTimer=j.running?setTimeout(jobPoll,1000):null;if(!j.running)loadReports()}
+$('xgo').onclick=()=>guard('xout',async()=>{await api('/api/auto/explore',{full_scan:$('xfull').checked,sample_s:+$('xs').value,init:$('init').value});jobPoll()});
+$('xst').onclick=()=>guard('xout',()=>api('/api/job/stop',{}));
+async function loadReports(){const r=await api('/api/reports');
+  $('rpls').innerHTML=r.files.map(f=>`<button class="sec" data-rp="${esc(f)}">${esc(f)}</button>`).join(' ')||'<p class="note">Sin informes todavía.</p>'}
+$('rpl').onclick=()=>guard('rpt',loadReports);
+$('rpls').onclick=e=>{const n=e.target.dataset.rp;if(n)guard('rpt',async()=>show('rpt',(await api('/api/report?name='+encodeURIComponent(n))).text))};
+setInterval(async()=>{try{const s=await api('/api/status');$('ask').style.display=s.ai.ask?'block':'none';$('askt').textContent=s.ai.ask||'';
+  if(s.ai.running&&!aiTimer)aiPoll()}catch{}},1500);
+loadReports().catch(()=>{});
+$('rqs').onclick=e=>{const n=e.target.dataset.r;if(n)guard('rqout',async()=>{const r=await api('/api/db/read',{name:n});
+  show('rqout',`${n}\n→ ${r.sent}  ← ${r.resp}\n`+r.values.map(v=>`${v.name} = ${v.value} ${v.unit}`).join('\n'))})};
+$('bes').onclick=()=>guard('rqout',async()=>{$('ecus').textContent='probando…';const r=await api('/api/ecu_scan',{init:$('init').value});
+  $('ecus').innerHTML=`<table><tr><th>dir</th><th>UCE</th><th>responde</th><th>2180</th></tr>${Object.entries(r).map(([k,v])=>`<tr><td>${k}</td><td class="l">${esc(v.name)}</td><td class="${v.ok?'ok':'err'}">${v.ok?'sí':'no'}</td><td class="l">${esc(v['2180']||'')}</td></tr>`).join('')}</table>`;status()});
+
+// ---- aprendizaje ----
+['reposo','freno','embrague','acelerador 50%','A/C','luces','motor 2000 rpm'].forEach(m=>{const b=document.createElement('button');b.className='sec';b.textContent=m;
+  b.onclick=()=>guard('rout',async()=>show('rout',await api('/api/learn/mark',{label:m})));$('marks').append(b)});
+$('rmb').onclick=()=>guard('rout',async()=>show('rout',await api('/api/learn/mark',{label:$('rm').value})));
+$('rs').onclick=()=>guard('rout',async()=>show('rout',await api('/api/learn/start',{name:$('rn').value,lids:$('rl').value,period_ms:+$('rp').value})));
+$('rx').onclick=()=>guard('rout',async()=>show('rout',await api('/api/learn/stop',{})));
+$('ra').onclick=()=>guard('rout',async()=>show('rout',await api('/api/learn/analyze',{})));
+async function loadVars(){await guard('rout',async()=>{const t=await api('/api/decode');
+  $('vars').innerHTML=`<table><tr><th>LID</th><th>nombre</th><th>byte</th><th>len</th><th>bit</th><th>escala</th><th>offset</th><th>unidad</th><th></th></tr>${Object.entries(t).filter(([k])=>!k.startsWith('_')).flatMap(([lid,ps])=>ps.map(p=>
+    `<tr><td>${lid}</td><td class="l">${esc(p.name)}</td><td>${p.byte}</td><td>${p.len||1}</td><td>${p.bit??''}</td><td>${p.scale??1}</td><td>${p.offset??0}</td><td>${esc(p.unit)}</td><td><button class="sec" data-del="${esc(lid)}|${esc(p.name)}">×</button></td></tr>`)).join('')}</table>`})}
+$('vsave').onclick=()=>guard('rout',async()=>{const bit=$('vbit').value===''?-1:+$('vbit').value;
+  await api('/api/decode',{lid:$('vl').value,name:$('vn').value,byte:+$('vb').value,len:+$('vlen').value||1,bit,scale:+$('vs').value,offset:+$('vo').value,unit:$('vu').value,le:$('vle').checked});loadVars()});
+$('vars').onclick=e=>{const d=e.target.dataset.del;if(d)guard('rout',async()=>{const[lid,name]=d.split('|');await api('/api/decode',{lid,name,delete:true});loadVars()})};
+$('bs').onclick=()=>guard('scan',async()=>{show('scan','escaneando… (con la UCE real tarda minutos)');
+  const r=await api('/api/scan',{start:parseInt($('s0').value,16),end:parseInt($('s1').value,16)});
+  show('scan',`${Object.keys(r.found).length} LIDs con respuesta → logs/${r.file}\n`+Object.entries(r.found).map(([k,v])=>`21${k}: ${v}`).join('\n'))});
+$('bk').onclick=()=>guard('con',async()=>{const l=$('cl').value;const r=(await api('/api/console',{line:l})).resp;
+  $('con').textContent=`> ${l}\n${typeof r==='string'?r:r.join('\n')}\n`+$('con').textContent});
+$('cl').onkeydown=e=>{if(e.key==='Enter')$('bk').click()};
+$('bsl').onclick=()=>guard('con',async()=>show('con',(await api('/api/serial_log?n=200')).lines.join('\n')||'(sin log: solo con el puente ESP)'));
+status();
+</script>
+</body>
+</html>

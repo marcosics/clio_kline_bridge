@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "clio-kline": {
+      "command": "python",
+      "args": ["tools/clio_mcp.py"],
+      "env": { "CLIO_WEB": "http://127.0.0.1:8080" }
+    }
+  }
+}

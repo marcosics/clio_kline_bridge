@@ -1,0 +1,15 @@
+# Compilacion
+firmware/.pio/
+__pycache__/
+*.pyc
+
+# Base DDT4ALL: no es publica
+ddt/*.zip
+ddt/*.json
+
+# Logs del coche (pueden llevar VIN)
+logs/
+informes/*.log
+
+.claude/settings.local.json
+.env
