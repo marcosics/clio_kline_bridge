@@ -119,6 +119,7 @@ Documentación de apoyo:
   - LI ← TX del micro.
   - RO → RX del micro, con pull-up a 3,3 V.
   - K con pull-up de 510 Ω a 12 V.
+- **Con lo que tiene (LM339N + ESP-01):** esquema completo en `docs/esquema_ESP01_LM339.md` (lógica no invertida, sin cambios de firmware).
 - **Alternativa discreta:**
   - TX: micro → 1 kΩ → NPN con el colector a la K.
   - RX: K → 10 kΩ → NPN con pull-up de 10 kΩ a 3,3 V.
