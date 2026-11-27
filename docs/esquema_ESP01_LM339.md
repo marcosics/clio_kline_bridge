@@ -1,5 +1,7 @@
 # Puente línea K con ESP-01 + LM339N (sin L9637D)
 
+**Dibujos para imprimir** (en `docs/img/`): `esquemas_imprimir.pdf` (A4 apaisado, 3 hojas), y por separado `protoboard_esp01_lm339.png`, `obd_pines.png` y `pinout_lm339_esp01.png`. Se regeneran con `python docs/img/gen_esquemas.py && node docs/img/render.js`.
+
 Firmware: `pio run -e esp01 -t upload` (ya compila, **no hay que cambiar nada**: la lógica es NO invertida y GPIO2 a nivel bajo habilita el TX).
 
 ## 1. Esquema general
@@ -119,9 +121,9 @@ Cómo funciona:
  ESP-01         a
  VCC        ── +3V3
  GND        ── GND
- EN (CH_PD) ── R12 10k ── +3V3
- RST        ── R13 10k ── +3V3
- GPIO0      ── R14 10k ── +3V3   (alto al arrancar = arranque normal)
+ EN (CH_PD) ── +3V3 directo
+ RST        ── +3V3 directo
+ GPIO0      ── +3V3 directo   (alto al arrancar = arranque normal)
  GPIO2      ── R8 10k ── +3V3    y al ánodo de D2
  TX (GPIO1) ── R7 → LM339 pines 7/9
  RX (GPIO3) ── LM339 pin 2 (con R4 a +3V3)
@@ -136,7 +138,7 @@ Cómo funciona:
 | R10 | 1 kΩ ¼ W | pull-up K. Si con la K baja mides >1,5 V, cambia a 1,5 kΩ |
 | R1 | 68 kΩ | divisor K |
 | R3 | 47 kΩ | referencia RX |
-| R2, R4-R8, R11-R14 | 10 kΩ | 10 uds |
+| R2, R4-R8, R11 | 10 kΩ | 7 uds |
 | D1 | 1N4007 | polaridad |
 | D2 | 1N4148 | puerta TX (si no tienes, prueba sin ella: solo hay basura en la K al arrancar el ESP) |
 | F1 | 1 A | portafusibles de cable o fusible de coche |

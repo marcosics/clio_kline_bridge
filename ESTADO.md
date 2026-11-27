@@ -5,6 +5,7 @@ Leyenda: ✅ hecho y probado con el simulador · 🟡 hecho, falta el coche o un
 | Pedido | Estado | Dónde / qué falta |
 |---|---|---|
 | Identificar el cable «SX» (ELM/OBDLink/vLinker) | 🟡 | `clio_kline.py probe`. Falta ejecutarlo con el cable. |
+| Puente con lo de casa (ESP-01 + LM339N) | 🟡 | Esquema y dibujos en `docs/esquema_ESP01_LM339.md` y `docs/img/`. Falta montarlo y probarlo en banco. |
 | Pruebas ESP con PlatformIO | 🟡 | `firmware/`: 5 entornos compilan. Falta grabarlo y probarlo con el L9637D. |
 | ECU simulada para probar sin coche | ✅ | Simulador en la web y `SIM ON` / `esp32_ecusim` en el firmware. |
 | Una sola web con fallos, datos y configuración | ✅ | Pestañas Claude en vivo, Tablero, Fallos, Configuración y Aprendizaje. |
