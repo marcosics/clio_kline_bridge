@@ -194,3 +194,12 @@ Mismo circuito, pero en la placa se reparten los comparadores de otra forma para
 - El ESP-01 va en un zócalo hembra 2×4 en N7-O10 y sobresale por la derecha de la placa.
 - 3 cables aislados: W1 (GPIO2, por abajo, soldado a la patilla del zócalo), W2 (+3,3 V) y W3 (masa), por arriba.
 - Al acabar, sin alimentar: polímetro en continuidad entre +12 V, +3,3 V, K y masa → ninguno debe pitar.
+
+## 12. Versión en la placa pequeña (6 × 17, serigrafía 01-06 / A-Q)
+
+Solo el LM339N y sus componentes (`pequena_lm339.png`); el ESP-01 va aparte con cables Dupont y el buck suelto.
+- Comparadores: 1 y 2 para TX; el 3 (pines 8, 9, 14) para RX; el que sobra con las entradas a masa.
+- LM339 con la muesca abajo, en las columnas 02 y 05.
+- Fuera de la placa: F1 1 A y D1 1N4007 en el cable del OBD 16; C1 470 µF junto al ESP-01.
+- ESP-01: VCC, EN, RST y GPIO0 al +3,3 V del buck; GND a masa; TX, RX y GPIO2 a los agujeros marcados.
+- 2 cables aislados por arriba (W1, W2). Colocación encontrada por búsqueda automática y conectividad comprobada por `gen_pequena.py`.

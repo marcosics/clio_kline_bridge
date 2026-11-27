@@ -174,7 +174,7 @@ def board(s, x0, y0, mirror):
     return xy
 
 
-def res_body(s, a, b, val, label, standing, tumbada=False):
+def res_body(s, a, b, val, label, standing, tumbada=False, color="#111"):
     (x1, y1), (x2, y2) = a, b
     s.add(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#a3a3a3" stroke-width="3"/>')
     code = RES[val]
@@ -192,7 +192,7 @@ def res_body(s, a, b, val, label, standing, tumbada=False):
         s.add(f'<circle cx="{x}" cy="{y}" r="3" fill="#888"/>')
     dx, dy = (22, 4) if vert else (0, -12)
     left = label.startswith("R6")
-    s.text(cx - dx if left else cx + dx, cy + dy, label, 11, "#111", "end" if left else ("start" if vert else "middle"), "bold")
+    s.text(cx - dx if left else cx + dx, cy + dy, label, 11, color, "end" if left else ("start" if vert else "middle"), "bold")
 
 
 def top_view(net_of):
