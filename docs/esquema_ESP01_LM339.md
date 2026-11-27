@@ -1,6 +1,6 @@
 # Puente línea K con ESP-01 + LM339N (sin L9637D)
 
-**Dibujos para imprimir** (en `docs/img/`): `esquemas_imprimir.pdf` (A4 apaisado, 3 hojas), y por separado `protoboard_esp01_lm339.png`, `obd_pines.png` y `pinout_lm339_esp01.png`. Se regeneran con `python docs/img/gen_esquemas.py && node docs/img/render.js`.
+**Dibujos para imprimir** (en `docs/img/`): `esquemas_imprimir.pdf` (A4 apaisado, 3 hojas), y por separado `protoboard_esp01_lm339.png`, `obd_pines.png` y `pinout_lm339_esp01.png`. Placa perforada: `perfboard_arriba.png` (componentes) y `perfboard_abajo.png` (soldaduras, en espejo). Se regeneran con `python docs/img/gen_esquemas.py && python docs/img/gen_perfboard.py && node docs/img/render.js` (el segundo comprueba que no haya cortos ni redes cortadas).
 
 Firmware: `pio run -e esp01 -t upload` (ya compila, **no hay que cambiar nada**: la lógica es NO invertida y GPIO2 a nivel bajo habilita el TX).
 
@@ -174,3 +174,19 @@ Con el adaptador USB-ESP01 (CH340), **fuera de la placa**:
 ## 10. En el coche
 
 Contacto puesto, motor parado, cargador de batería si se alarga. Con la web: `connect bridge tcp:192.168.4.1:23` → `INIT FAST 7A` → `10C0` → `2180`. Solo lectura (el firmware bloquea las escrituras).
+
+## 11. Placa perforada compacta (15 × 12 agujeros, 38 × 30 mm)
+
+Mismo circuito, pero en la placa se reparten los comparadores de otra forma para ahorrar pistas:
+
+| Pin LM339 | Protoboard | Placa perforada |
+|---|---|---|
+| 1, 2 (OUT2, OUT1) | K, RX | **K, K** |
+| 4 / 5 / 6 / 7 | ref RX / K÷7,8 / ref TX / nodo TX | **ref TX / nodo TX / ref TX / nodo TX** |
+| 8 / 9 / 10 / 11 | ref TX / nodo TX / ref TX / masa | **ref RX / K÷7,8 / masa / masa** |
+| 13 / 14 | sin conectar / K | **sin conectar / RX** |
+
+- Resistencias de pie (salvo R1, tumbada). C1 tumbado hacia el borde. C2 se omite (C1 + C3 bastan).
+- El ESP-01 va en un zócalo hembra 2×4 en N7-O10 y sobresale por la derecha de la placa.
+- 3 cables aislados: W1 (GPIO2, por abajo, soldado a la patilla del zócalo), W2 (+3,3 V) y W3 (masa), por arriba.
+- Al acabar, sin alimentar: polímetro en continuidad entre +12 V, +3,3 V, K y masa → ninguno debe pitar.

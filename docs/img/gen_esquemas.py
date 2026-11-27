@@ -6,7 +6,7 @@ import math, os
 OUT = os.path.dirname(os.path.abspath(__file__))
 P = 20  # paso de la protoboard (0,1")
 
-COL = {"12V": "#d62828", "3V3": "#f77f00", "GND": "#222222", "K": "#e9c46a", "KD": "#2a9d8f",
+COL = {"12V": "#d62828", "3V3": "#f77f00", "GND": "#222222", "K": "#e9c46a", "KD": "#e76f51",
        "RX": "#2a9d8f", "TX": "#1d4ed8", "G2": "#7b2cbf", "REF": "#8d99ae", "PU": "#f4a261", "TXN": "#60a5fa"}
 BANDS = {"0": "#000", "1": "#7a4a1d", "2": "#d00", "3": "#f80", "4": "#ee0", "5": "#0a0", "6": "#05c",
          "7": "#90c", "8": "#888", "9": "#fff"}
