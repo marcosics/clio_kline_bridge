@@ -175,7 +175,11 @@ Con el adaptador USB-ESP01 (CH340), **fuera de la placa**:
 
 Contacto puesto, motor parado, cargador de batería si se alarga. Con la web: `connect bridge tcp:192.168.4.1:23` → `INIT FAST 7A` → `10C0` → `2180`. Solo lectura (el firmware bloquea las escrituras).
 
-## 11. Placa perforada compacta (15 × 12 agujeros, 38 × 30 mm)
+## 11. Placa perforada (la de 5×7 cm, 18 × 24, serigrafía 01-18 / A-X)
+
+Se usan las filas A-L (columnas 01-15; el ESP-01 queda encima de 16-18). Cortar entre L y M: el trozo M-X (18 × 12) se guarda. Los agujeros se nombran con la serigrafía: letra de fila + número de columna (p. ej. `I01`).
+
+La placa pequeña (6 × 17) no da para todo (el circuito usa 114 agujeros; ella tiene 102): se usa como soporte del buck (`perfboard_pequena_buck.png`).
 
 Mismo circuito, pero en la placa se reparten los comparadores de otra forma para ahorrar pistas:
 

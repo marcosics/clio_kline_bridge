@@ -8,7 +8,12 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_esquemas import Svg, COL, BANDS, RES, OUT
 
-NC, NR = 15, 12          # 15 x 12 agujeros = 38 x 30 mm
+NC, NR = 18, 12          # placa 5x7 cm (18 x 24): se usan las filas A-L; el diseño ocupa las columnas 01-15
+
+
+def lab(c, r):
+    """Nombre del agujero con la serigrafía de la placa: letra de fila + número de columna (p. ej. I01)."""
+    return f"{chr(65 + r)}{c + 1:02d}"
 P = 34                   # px por agujero en el dibujo
 
 # ---------------------------------------------------------------- pistas por debajo (puentes de estaño / hilo desnudo)
@@ -159,11 +164,13 @@ def board(s, x0, y0, mirror):
                 s.add(f'<circle cx="{px}" cy="{py}" r="11" fill="#c9884b" stroke="#9b5f2a"/>')
             s.add(f'<circle cx="{px}" cy="{py}" r="4.5" fill="#3b2a14"/>')
     for c in range(NC):
-        s.text(xy(c, 0)[0], y0 + 14, chr(65 + c), 11, "#5a4320", "middle", "bold")
-        s.text(xy(c, 0)[0], y0 + h - 4, chr(65 + c), 11, "#5a4320", "middle", "bold")
+        s.text(xy(c, 0)[0], y0 + 14, f"{c + 1:02d}", 10, "#5a4320", "middle", "bold")
+        s.text(xy(c, 0)[0], y0 + h - 4, f"{c + 1:02d}", 10, "#5a4320", "middle", "bold")
     for r in range(NR):
-        s.text(x0 - 10, xy(0, r)[1] + 4, str(r + 1), 11, "#5a4320", "end", "bold")
-        s.text(x0 + w + 10, xy(0, r)[1] + 4, str(r + 1), 11, "#5a4320", "start", "bold")
+        s.text(x0 - 10, xy(0, r)[1] + 4, chr(65 + r), 11, "#5a4320", "end", "bold")
+        s.text(x0 + w + 10, xy(0, r)[1] + 4, chr(65 + r), 11, "#5a4320", "start", "bold")
+    s.add(f'<line x1="{x0 - 20}" y1="{y0 + h + 6}" x2="{x0 + w + 20}" y2="{y0 + h + 6}" stroke="#c00" stroke-width="2" stroke-dasharray="8 5"/>')
+    s.text(x0 + w / 2, y0 + h + 22, "✂ cortar aquí (entre las filas L y M): el trozo M-X (18 × 12) se guarda", 12, "#c00", "middle", "bold")
     return xy
 
 
@@ -189,7 +196,7 @@ def res_body(s, a, b, val, label, standing, tumbada=False):
 
 
 def top_view(net_of):
-    s = Svg(1060, 760, "Placa perforada 15 × 12 (38 × 30 mm) — vista de COMPONENTES (por arriba)")
+    s = Svg(1060, 790, "Placa 5×7 cm (filas A-L, se corta el resto) — vista de COMPONENTES (por arriba)")
     xy = board(s, 70, 80, False)
     # zócalo del ESP
     (ax, ay), (bx, by) = xy(13, 6), xy(14, 9)
@@ -198,16 +205,14 @@ def top_view(net_of):
         x, y = xy(*cell)
         s.add(f'<rect x="{x - 5}" y="{y - 5}" width="10" height="10" fill="#444"/>')
         if cell[0] == 14:
-            s.text(x + 22, y + 4, n, 10, "#111", "start", "bold")
-    s.add(f'<rect x="{bx + 64}" y="{ay - 40}" width="190" height="{by - ay + 80}" rx="6" fill="#1f2f6b" fill-opacity=".25" '
+            s.text(x + 26, y + 4, n, 10, "#1f2f6b", "start", "bold")
+    mx0 = bx + 18
+    s.add(f'<rect x="{mx0}" y="{ay - 30}" width="250" height="{by - ay + 60}" rx="6" fill="#1f2f6b" fill-opacity=".18" '
           f'stroke="#1f2f6b" stroke-dasharray="6 4"/>')
-    s.text(bx + 159, ay - 48, "ESP-01 enchufado aquí:", 12, "#1f2f6b", "middle", "bold")
-    s.text(bx + 159, ay - 34, "sobresale de la placa", 11, "#1f2f6b", "middle")
-    s.text(bx + 159, by + 28, "chips hacia arriba", 11, "#1f2f6b", "middle")
-    s.text(bx + 159, by + 42, "antena hacia fuera", 11, "#1f2f6b", "middle")
+    s.text(mx0 + 150, ay - 38, "ESP-01 enchufado (por encima de 16-18, sobresale)", 11, "#1f2f6b", "middle", "bold")
+    s.text(mx0 + 150, by + 22, "chips arriba · antena hacia fuera", 11, "#1f2f6b", "middle")
     s.text((ax + bx) / 2, by + 30, "zócalo 2×4 hembra", 10, "#111", "middle")
-    s.text(bx + 64, by + 62, "N7 VCC · N8 RST · N9 EN · N10 TX", 11, "#111", "start", "bold")
-    s.text(bx + 64, by + 78, "O7 RX · O8 GPIO0 · O9 GPIO2 · O10 GND", 11, "#111", "start", "bold")
+    pinmap = ("Zócalo: " + " · ".join(f"{lab(*ESP[n][0])} {n}" for n in ("VCC", "RST", "EN", "TX", "RX", "GPIO0", "GPIO2", "GND")))
     # LM339
     (x1, y1), (x2, y2) = xy(4, 4), xy(10, 7)
     s.add(f'<rect x="{x1 - 14}" y="{y1 + 12}" width="{x2 - x1 + 28}" height="{y2 - y1 - 24}" rx="4" fill="#262626"/>')
@@ -275,26 +280,25 @@ def top_view(net_of):
         x, y = xy(*cell)
         ex = 70 - 20
         s.add(f'<path d="M{x},{y} L{ex - 10},{y}" stroke="{col}" stroke-width="6" stroke-linecap="round"/>' if cell[0] <= 2 and cell[1] != 10 else
-              f'<path d="M{x},{y} Q{x - 20},{y + 30} {x - 60},{y + 110}" fill="none" stroke="{col}" stroke-width="6" stroke-linecap="round"/>')
+              f'<path d="M{x},{y} Q{x - 10},{y + 20} {x - 30},{y + 58}" fill="none" stroke="{col}" stroke-width="6" stroke-linecap="round"/>')
     ly = 80
     for cell, net, t, col in EXT:
         pass
-    notes = [("OBD 16 (+12 V con F1 1 A) → A9", COL["12V"]), ("OBD 7 (línea K) → C8", COL["K"]),
-             ("OBD 4 y 5 (masa) → A12", COL["GND"]), ("buck IN+ → C10", COL["12V"]), ("buck IN− y OUT− → B12", COL["GND"]),
-             ("buck OUT+ (3,3 V) → G11", COL["3V3"])]
+    notes = [(f"{t} → {lab(*cell)}", col) for cell, net, t, col in EXT]
     for i, (t, col) in enumerate(notes):
         x, y = 70 + (i % 3) * 300, 610 + (i // 3) * 24
         s.add(f'<line x1="{x}" y1="{y - 4}" x2="{x + 26}" y2="{y - 4}" stroke="{col}" stroke-width="6" stroke-linecap="round"/>')
         s.text(x + 34, y, t, 12)
-    s.text(70, 680, "Resistencias DE PIE (el círculo marca la patilla de abajo del cuerpo), salvo R1 tumbada. C1 tumbado hacia el borde de arriba.", 12, "#333")
-    s.text(70, 700, "Letras = columnas, números = filas. W2 y W3: cable fino aislado por arriba. W1 va por abajo (ver la otra hoja).", 12, "#333")
-    s.text(70, 720, "En la placa, el LM339 usa los comparadores 1-2 para TX y el 3 para RX: mismo circuito que la protoboard, otros pines.", 12, "#333")
-    s.text(70, 740, "Muesca del LM339 a la izquierda. El ESP-01 se quita para grabarlo.", 12, "#333")
+    s.text(70, 664, pinmap, 12, "#111", weight="bold")
+    s.text(70, 686, "Resistencias DE PIE (el círculo marca la patilla de abajo del cuerpo), salvo R1 tumbada. C1 tumbado hacia el borde de arriba.", 12, "#333")
+    s.text(70, 706, "Letras = filas (A-L), números = columnas (01-18), como viene serigrafiado. W2 y W3: cable aislado por arriba; W1 por abajo.", 12, "#333")
+    s.text(70, 726, "En la placa, el LM339 usa los comparadores 1-2 para TX y el 3 para RX: mismo circuito que la protoboard, otros pines.", 12, "#333")
+    s.text(70, 746, "Muesca del LM339 a la izquierda. El ESP-01 se quita para grabarlo.", 12, "#333")
     s.save("perfboard_arriba.svg")
 
 
 def bottom_view(net_of):
-    s = Svg(1060, 760, "Placa perforada — vista de SOLDADURAS (por abajo, dada la vuelta: izquierda ↔ derecha)")
+    s = Svg(1060, 790, "Placa 5×7 cm — vista de SOLDADURAS (por abajo, dada la vuelta: izquierda ↔ derecha)")
     xy = board(s, 70, 80, True)
     for net, seq in TRACES.items():
         prev = None
@@ -340,12 +344,82 @@ def bottom_view(net_of):
         s.text(x + 34, y, t, 12)
     s.text(70, 680, "Cada raya = unir dos agujeros vecinos con estaño o con hilo desnudo (el del cable rígido pelado). Nada más se toca.", 12, "#333")
     s.text(70, 700, "Al terminar: comprobar con el polímetro que NO hay continuidad entre +12 V, +3,3 V, K y masa.", 12, "#333")
-    s.text(70, 720, "Esta vista está en espejo: la columna A queda a la DERECHA, igual que cuando le das la vuelta a la placa.", 12, "#333")
+    s.text(70, 720, "Esta vista está en espejo: la columna 01 queda a la DERECHA, igual que cuando le das la vuelta a la placa.", 12, "#333")
     s.save("perfboard_abajo.svg")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and "--pequena" not in sys.argv:
     nets = check()
     top_view(nets)
     bottom_view(nets)
     print("SVG en", OUT)
+
+
+# ---------------------------------------------------------------- placa pequeña (6 x 17): soporte del buck
+def small_board():
+    SC, SR, Q = 6, 17, 30
+    s = Svg(1060, 760, "Placa pequeña 6 × 17 (01-06 / A-Q): alimentación con el buck MP1584")
+
+    def draw(x0, y0, mirror, title):
+        def xy(c, r):
+            cc = SC - 1 - c if mirror else c
+            return x0 + 28 + cc * Q, y0 + 28 + r * Q
+        w, h = 56 + (SC - 1) * Q, 56 + (SR - 1) * Q
+        s.add(f'<rect x="{x0}" y="{y0}" width="{w}" height="{h}" rx="6" fill="{"#c8a165" if mirror else "#d7b77a"}" stroke="#8a6a35" stroke-width="2"/>')
+        s.text(x0 + w / 2, y0 - 12, title, 14, "#111", "middle", "bold")
+        for r in range(SR):
+            s.text(x0 - 8, xy(0, r)[1] + 4, chr(65 + r), 10, "#5a4320", "end", "bold")
+            for c in range(SC):
+                px, py = xy(c, r)
+                if mirror:
+                    s.add(f'<circle cx="{px}" cy="{py}" r="10" fill="#c9884b" stroke="#9b5f2a"/>')
+                s.add(f'<circle cx="{px}" cy="{py}" r="4" fill="#3b2a14"/>')
+        for c in range(SC):
+            s.text(xy(c, 0)[0], y0 + 13, f"{c + 1:02d}", 9, "#5a4320", "middle", "bold")
+        return xy
+
+    # pistas: columna 01 = entrada/salida +, columna 06 = masa
+    runs = [("12V", 0, 0, 2), ("GND", 5, 0, 2), ("3V3", 0, 11, 16), ("GND", 5, 11, 16)]
+    legs = {"IN+": (0, 2), "IN−": (5, 2), "OUT+": (0, 11), "OUT−": (5, 11)}
+    wires = [((0, 0), "12V", "+12 V ← J03"), ((5, 0), "GND", "masa ← L02"),
+             ((0, 16), "3V3", "+3,3 V → K07"), ((5, 16), "GND", "masa (opcional)")]
+
+    xy = draw(300, 90, False, "Por ARRIBA")
+    (x1, y1), (x2, y2) = xy(0, 2), xy(5, 11)
+    s.add(f'<rect x="{x1 - 22}" y="{y1 - 16}" width="{x2 - x1 + 44}" height="{y2 - y1 + 32}" rx="4" fill="#1e5aa8" stroke="#0f3463" stroke-width="2"/>')
+    s.add(f'<rect x="{(x1 + x2) / 2 - 22}" y="{(y1 + y2) / 2 - 40}" width="44" height="44" fill="#6b7280"/>')
+    s.add(f'<circle cx="{(x1 + x2) / 2}" cy="{(y1 + y2) / 2 + 40}" r="12" fill="#f2c14e" stroke="#444"/>')
+    s.text((x1 + x2) / 2, (y1 + y2) / 2 + 70, "tornillo: 3,3 V", 10, "#fff", "middle", "bold")
+    s.text((x1 + x2) / 2, y1 + 32, "MP1584", 13, "#fff", "middle", "bold")
+    for n, cell in legs.items():
+        x, y = xy(*cell)
+        s.add(f'<rect x="{x - 6}" y="{y - 6}" width="12" height="12" fill="#d4af37" stroke="#7a5f12"/>')
+        s.text(x + (12 if cell[0] == 0 else -12), y + (16 if cell[1] == 2 else -10), n, 10, "#fff", "start" if cell[0] == 0 else "end", "bold")
+    for cell, net, t in wires:
+        x, y = xy(*cell)
+        right = cell[0] == 5
+        ex = x + 70 if right else x - 70
+        s.add(f'<path d="M{x},{y} L{ex},{y}" stroke="{COL[net]}" stroke-width="6" stroke-linecap="round"/>')
+        s.text(ex + (8 if right else -8), y + 4, t, 12, "#111", "start" if right else "end", "bold")
+
+    xy = draw(800, 90, True, "Por ABAJO (dada la vuelta)")
+    for net, c, ra, rb in runs:
+        for r in range(ra, rb):
+            (xa, ya), (xb, yb) = xy(c, r), xy(c, r + 1)
+            s.add(f'<line x1="{xa}" y1="{ya}" x2="{xb}" y2="{yb}" stroke="#b9bcc2" stroke-width="11" stroke-linecap="round"/>')
+            s.add(f'<line x1="{xa}" y1="{ya}" x2="{xb}" y2="{yb}" stroke="{COL[net]}" stroke-width="4" stroke-linecap="round"/>')
+        for r in range(ra, rb + 1):
+            x, y = xy(c, r)
+            s.add(f'<circle cx="{x}" cy="{y}" r="7" fill="#d7d9de" stroke="#8d9096"/>')
+    notes = ["Las 4 esquinas del buck (IN+, IN−, OUT+, OUT−) van a la placa con 4 patas de resistencia cortadas, en 01/06 de C y L.",
+             "Si las patas del buck no caen justo en C y L, usa la fila de al lado y alarga la pista de estaño.",
+             "Por abajo solo 4 pistas rectas: 01 A-C (+12 V), 06 A-C y 06 L-Q (masa), 01 L-Q (+3,3 V).",
+             "AJUSTA EL BUCK A 3,3 V con el polímetro ANTES de unirlo a la placa grande (gira el tornillo).",
+             "Con este soporte, en la placa grande los cables del buck van a J03 (IN+), L02 (masa) y K07 (OUT+)."]
+    for i, t in enumerate(notes):
+        s.text(60, 660 + i * 20, "• " + t, 12, "#333")
+    s.save("perfboard_pequena_buck.svg")
+
+
+if __name__ == "__main__" and "--pequena" in sys.argv:
+    small_board()

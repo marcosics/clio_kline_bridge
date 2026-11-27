@@ -3,7 +3,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path');
 const dir = __dirname;
-const files = ['protoboard_esp01_lm339.svg', 'perfboard_arriba.svg', 'perfboard_abajo.svg', 'obd_pines.svg', 'pinout_lm339_esp01.svg'];
+const files = ['protoboard_esp01_lm339.svg', 'perfboard_arriba.svg', 'perfboard_abajo.svg', 'perfboard_pequena_buck.svg', 'obd_pines.svg', 'pinout_lm339_esp01.svg'];
 (async () => {
   const b = await chromium.launch();
   const pg = await b.newPage({ deviceScaleFactor: 2 });
