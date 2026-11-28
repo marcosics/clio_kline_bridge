@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
           l.push_back(0);
           cmds.handle(l.data());
           buf.clear();
-        } else if (tmp[i] != '\r' && buf.size() < LINE_MAX) buf += tmp[i];
+        } else if (tmp[i] != '\r' && buf.size() < CMD_LINE_MAX) buf += tmp[i];
       }
     }
     kwp.poll();

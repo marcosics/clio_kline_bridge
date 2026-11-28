@@ -140,12 +140,12 @@ static WiFiServer ctrlSrv(23), monSrv(24);
 static WiFiClient ctrl, mon[3];
 static WiFiUDP udp;
 static WebSrv web(80);
-static char ctrlBuf[LINE_MAX];
+static char ctrlBuf[CMD_LINE_MAX];
 static size_t ctrlLen = 0;
 static bool staWasUp = false, apOn = false, otaBusy = false;
 static uint32_t staChangeMs = 0;
 #if CMD_SERIAL
-static char serBuf[LINE_MAX];
+static char serBuf[CMD_LINE_MAX];
 static size_t serLen = 0;
 #endif
 
@@ -242,7 +242,7 @@ static void tcpLoop() {
       cmds.handle(ctrlBuf);
       ctrlLen = 0;
       break;   // un comando por vuelta: deja respirar al wifi y al keep-alive
-    } else if (ch != '\r' && ctrlLen < LINE_MAX - 1) {
+    } else if (ch != '\r' && ctrlLen < CMD_LINE_MAX - 1) {
       ctrlBuf[ctrlLen++] = ch;
     }
   }
@@ -262,7 +262,7 @@ static void tcpLoop() {
   while (Serial.available()) {
     char ch = (char)Serial.read();
     if (ch == '\n') { serBuf[serLen] = 0; cmds.handle(serBuf); serLen = 0; }
-    else if (ch != '\r' && serLen < LINE_MAX - 1) serBuf[serLen++] = ch;
+    else if (ch != '\r' && serLen < CMD_LINE_MAX - 1) serBuf[serLen++] = ch;
   }
 #endif
 }
@@ -326,7 +326,7 @@ static void webSetup() {
   });
   web.on("/cmd", []() {
     String c = web.arg("c"), outp;
-    char line[LINE_MAX];
+    char line[CMD_LINE_MAX];
     strncpy(line, c.c_str(), sizeof line - 1);
     line[sizeof line - 1] = 0;
     hal.capture = &outp;

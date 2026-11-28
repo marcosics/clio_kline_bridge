@@ -7,7 +7,7 @@
 
 #if defined(ARDUINO_ARCH_AVR)
   #define KBUF 48          // Uno: 2 KB de RAM (tramas de hasta 43 bytes de datos: las de la DDCR caben)
-  #define LINE_MAX 100
+  #define CMD_LINE_MAX 100
   #define WHY_LEN 90
   #define HEX_LEN 80        // hex de tramas en el log (se recorta)
   #define NO_SIM 1          // sin UCE simulada en el Uno (no cabe)
@@ -15,7 +15,7 @@
   #define LOG_LINE_LEN 1
 #else
   #define KBUF 264         // trama KWP2000 máxima: 4 de cabecera + 255 datos + checksum
-  #define LINE_MAX 900      // cabe una trama de 260 bytes en hex
+  #define CMD_LINE_MAX 900      // cabe una trama de 260 bytes en hex
   #define LOG_LINES 40     // últimas líneas para LOGDUMP y la página web del ESP
   #define LOG_LINE_LEN 160
   #define WHY_LEN 160

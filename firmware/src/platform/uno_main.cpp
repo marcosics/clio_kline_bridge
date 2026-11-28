@@ -57,7 +57,7 @@ static UnoHal hal;
 static Settings cfg;
 static Kwp kwp(hal, cfg);
 static Commands cmds(hal, kwp, cfg);
-static char buf[LINE_MAX];
+static char buf[CMD_LINE_MAX];
 static uint8_t len = 0;
 
 void setup() {
@@ -74,7 +74,7 @@ void loop() {
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == '\n') { buf[len] = 0; cmds.handle(buf); len = 0; }
-    else if (c != '\r' && len < LINE_MAX - 1) buf[len++] = c;
+    else if (c != '\r' && len < CMD_LINE_MAX - 1) buf[len++] = c;
   }
   kwp.poll();
 }

@@ -98,7 +98,7 @@ void emitP(const char* pfx, const char* fmt, ...) {
 void emit(const char* pfx, const char* fmt, ...) {
 #endif
   if (!gHal) return;
-  static char line[LINE_MAX];   // estática: la pila del ESP8266 es pequeña
+  static char line[CMD_LINE_MAX];   // estática: la pila del ESP8266 es pequeña
   int o = snprintf(line, sizeof line, "%s %lu ", pfx, (unsigned long)gHal->us());
   va_list ap;
   va_start(ap, fmt);
