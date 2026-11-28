@@ -83,7 +83,8 @@ def scan_lids(start: int = 1, end: int = 255) -> str:
 
 @mcp.tool()
 def send(request_hex: str) -> str:
-    """Peticion KWP2000 cruda (solo 10C0, 3E, 21, 17, 18, 1A) o comando del adaptador (AT..., STATUS, SNIFF ON...)."""
+    """Peticion KWP2000 cruda (solo 10C0, 3E, 21, 17, 18, 1A) o comando del adaptador: AT... (ELM) o del puente ESP:
+    STATUS, STATS, TEST LINE, TEST ECHO, LOGDUMP, TIMING, CONFIG, SET, NET, SCAN, SNIFF ON, LOG 2... (ver firmware/LEEME.md)."""
     return call("/api/console", {"line": request_hex})
 
 

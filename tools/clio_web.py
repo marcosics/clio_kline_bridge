@@ -28,7 +28,8 @@ REPORTS = ROOT / "informes"
 REPORTS.mkdir(exist_ok=True)
 DECODE = Path(__file__).parent / "ddcr_decode.json"
 ECUS = {"7A": "Inyeccion (DDCR)", "28": "ABS", "26": "UCH", "2C": "Airbag", "51": "Cuadro"}
-BRIDGE_CMDS = ("PING", "STATUS", "SNIFF", "KEEPALIVE", "SIM")
+BRIDGE_CMDS = ("PING", "STATUS", "SNIFF", "KEEPALIVE", "SIM", "VERSION", "STATS", "TEST", "LOGDUMP", "CONFIG", "SET ",
+               "SAVE", "WIFI", "NET", "SCAN", "TIMING", "LOG", "BAUD", "ECU ", "INIT", "HELP", "REBOOT", "FACTORY")
 
 
 def safe(h):
@@ -190,9 +191,8 @@ class BridgeBackend:
         return out
 
     def connect(self, ecu, init="fast"):
-        if init != "fast":
-            return False, {"error": "el firmware solo hace fast init"}
-        out = {"PING": self.cmd("PING"), "INIT": self.cmd(f"INIT FAST {ecu}")}
+        out = {"PING": self.cmd("PING"),
+               "INIT": self.cmd(f"INIT {'SLOW' if init == 'slow' else 'FAST'} {ecu}", 12)}
         out["10C0"] = self.req("10C0")
         out["KEEPALIVE"] = self.cmd("KEEPALIVE ON 1500")
         return bool(out["INIT"]) and out["INIT"][-1].startswith("OK") and out["10C0"].startswith("50"), out

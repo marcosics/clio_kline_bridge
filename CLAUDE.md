@@ -127,16 +127,20 @@ Documentación de apoyo:
 - Protección: TVS de 18 V en la K y en +12 V, fusible, y buck de 12 a 5/3,3 V (no usar un AMS1117 directo desde 14 V).
 - Toma OBD: 7 = K, 16 = +12 V, 4/5 = masa.
 
-### Protocolo de comandos del firmware (texto, igual por USB y TCP)
+### Protocolo de comandos del firmware 2.x (texto, igual por USB, telnet :23 y la página web del ESP)
+Referencia completa y guía de depuración: `firmware/LEEME.md`. Núcleo portátil en `firmware/src/core/`, plataformas en
+`firmware/src/platform/` (ESP8266/ESP32, Uno y `native` = mismo firmware en el PC con línea K virtual, usado por las pruebas).
 ```
-PING                      -> OK PONG
-INIT FAST <ecu>           -> OK INIT | ERR <motivo>
-SEND <hex sin checksum>   -> TX <trama> / RX <trama> / ERR TIMEOUT | ERR BLOCKED
-KEEPALIVE ON|OFF <ms>     -> OK
-SNIFF ON|OFF              -> RAW <t_us> <hex>
-BAUD <n> · STATUS · LOG <nivel>
+PING · VERSION · HELP · STATUS · STATS [RESET]
+INIT FAST [ecu] [intentos] | INIT SLOW [ecu]   -> OK INIT 7A kb=EF8F | ERR INIT <motivo con pista>
+SEND <hex sin checksum>   -> TX <trama> / RX <trama> / OK SEND | ERR TIMEOUT|CHECKSUM|INCOMPLETE|NOECHO|BLOCKED
+ECU <hex> · KEEPALIVE ON [ms]|OFF · SNIFF ON|OFF (RAW <hex> cs=ok) · SIM ON|OFF
+TEST LINE · TEST ECHO [n]      -> diagnóstico del hardware sin UCE
+TIMING [clave valor] · BAUD · LOG 0-3 · LOGDUMP · CONFIG · SET · SAVE · FACTORY · REBOOT
+WIFI ssid clave | WIFI OFF · NET · SCAN       (ESP: wifi del móvil guardado en EEPROM)
 ```
-Todas las líneas llevan timestamp en µs y uno de estos prefijos: `TX`, `RX`, `ECHO`, `RAW`, `DBG`, `ERR`.
+Cada comando termina con UNA línea `OK`/`ERR`; lo asíncrono va con `EVT`, `DBG`, `RAW`, `INFO`. Prefijo + µs + texto.
+ESP: puerto 23 control (un cliente), 24 monitor de solo lectura, 80 página de diagnóstico, OTA (`-e esp01_ota`).
 
 ### Web y servidor MCP (hecho)
 - `tools/clio_web.py` es el **único tester** de la línea K: backends `sim`, `elm` y `bridge`. Pestañas: Tablero, Fallos, Configuración y Aprendizaje.

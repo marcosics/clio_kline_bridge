@@ -241,6 +241,65 @@ def test_bridge_tcp():
     w.api("/api/disconnect", {}, {})
 
 
+FW = Path(__file__).resolve().parent.parent / "firmware" / ".pio" / "build" / "native" / "program"
+
+
+def test_native_firmware():
+    """El firmware REAL (núcleo compilado para el PC con línea K virtual) contra la web: init, lecturas, modo coche."""
+    if not FW.exists():
+        print("  (sin firmware nativo: python -m platformio run -d firmware -e native)")
+        return
+    s0 = socket.socket()
+    s0.bind(("127.0.0.1", 0))
+    port = s0.getsockname()[1]
+    s0.close()
+    p = w.subprocess.Popen([str(FW), "--port", str(port)], stdout=w.subprocess.DEVNULL)
+    try:
+        for _ in range(50):
+            try:
+                socket.create_connection(("127.0.0.1", port), 0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        r = w.api("/api/connect", {}, {"backend": "bridge", "address": f"tcp:127.0.0.1:{port}", "ecu": "7A"})
+        assert r["ok"], r
+        ident = w.api("/api/ident", {}, {})
+        assert ident["2180"].startswith("6180") and "SIM8200212348" in ident["ascii"], ident
+        live = w.api("/api/live", {"lids": ["A1,A2"]}, {})["lids"]
+        assert len(live["A1"]["bytes"]) == 24 and len(live["A2"]["bytes"]) == 24
+        assert w.api("/api/dtc", {}, {})["17"]["dtc"][0]["code"] == "0123"
+        con = lambda l: w.api("/api/console", {}, {"line": l})["resp"]
+        assert con("TEST ECHO 8")[-1].startswith("OK") and con("TEST LINE")[-1].startswith("OK")
+        assert con("STATUS")[-1].split()[0] == "OK" and "link=UP" in con("STATUS")[-1]
+        try:
+            con("3B0101")
+            raise AssertionError("3B no bloqueado")
+        except ValueError:
+            pass
+        assert w.api("/api/select_ecu", {}, {"ecu": "28", "init": "slow"})["ok"]
+        assert w.api("/api/live", {"lids": ["A0"]}, {})["lids"]["A0"]["bytes"]
+        assert not w.api("/api/select_ecu", {}, {"ecu": "2C"})["ok"]          # no existe: falla limpio
+        assert w.api("/api/select_ecu", {}, {"ecu": "7A"})["ok"]
+        w.api("/api/drive/start", {}, {"plan": {"main_ecu": "7A", "main_lids": ["A1"], "period_ms": 50, "others": []}})
+        time.sleep(2)
+        st = w.api("/api/drive/status", {}, {})
+        w.api("/api/drive/stop", {}, {})
+        assert st["samples"] >= 10, st
+        stats = con("STATS")[-1]
+        assert "checksum=0" in stats and "echo_err=0" in stats, stats
+        # el firmware bloquea por su cuenta aunque alguien se salte la web
+        w.api("/api/disconnect", {}, {})
+        time.sleep(0.2)
+        c = socket.create_connection(("127.0.0.1", port), 2)
+        c.sendall(b"SEND 2E0101\nSEND 14FF00\nSEND 1085\n")
+        time.sleep(0.5)
+        txt = c.recv(4096).decode()
+        assert txt.count("ERR") == 3 and "BLOCKED" in txt and "\nTX" not in txt, txt
+        c.close()
+    finally:
+        p.terminate()
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
