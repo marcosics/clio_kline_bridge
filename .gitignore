@@ -13,3 +13,7 @@ informes/*.log
 
 .claude/settings.local.json
 .env
+
+# Lo que la IA aprende del coche (puede llevar datos del coche)
+tools/ia_memoria.md
+tools/ui_layout.prev.json

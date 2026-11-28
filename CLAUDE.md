@@ -146,6 +146,13 @@ Todas las líneas llevan timestamp en µs y uno de estos prefijos: `TX`, `RX`, `
   - aprendizaje: `learn_start`, `learn_mark`, `learn_stop`, `learn_analyze`, `recordings`
   - tabla local: `decode_get`, `decode_set`
   - base DDT4ALL: `db_status`, `db_search`, `db_read`
+  - modo coche: `drive_start`, `drive_stop`, `drive_status`, `drive_summary`, `drive_series`, `events`, `drives`, `analyze_drive`
+  - panel y memoria: `ui_get`, `ui_page`, `ui_set`, `memory_get`, `memory_add`
+- **Modo coche** (`MODO_COCHE.md`, `tools/clio_drive.py`): registro continuo con reconexión, otras UCE cada N s,
+  eventos (avería, anomalía, byte que despierta, comunicación), autodescubrimiento (contadores, bits, correlaciones),
+  panel `tools/ui_layout.json` que diseña la IA y memoria `tools/ia_memoria.md`. IA automática con topes diarios
+  (`--ia-auto MIN`) y chat que continúa la sesión. El ESP se une al hotspot del móvil (`[movil]` en platformio.ini)
+  y se descubre por mDNS `clio-kline.local` o UDP `CLIO?` al puerto 4210.
 - Lo aprendido se guarda en `tools/ddcr_decode.json`. La base DDT4ALL va en `ddt/ecu.zip` (no es pública; ver `ddt/LEEME.md`).
 - Pruebas: `python tools/test_clio_web.py`. Guía delante del coche: `PRUEBAS.md`.
 - Leer el puerto en directo también con `pio device monitor` o `python -m serial.tools.miniterm`.

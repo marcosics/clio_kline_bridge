@@ -5,6 +5,8 @@
 
 #if defined(ESP32)
   #include <WiFi.h>
+  #include <ESPmDNS.h>
+  #include <WiFiUdp.h>
   #define HAS_WIFI 1
   #define CMD_SERIAL 1
   #define BOARD "esp32"
@@ -13,6 +15,8 @@
   void kBegin() { K.begin(10400, SERIAL_8N1, K_RX, K_TX); }
 #elif defined(ESP8266)
   #include <ESP8266WiFi.h>
+  #include <ESP8266mDNS.h>
+  #include <WiFiUdp.h>
   #define HAS_WIFI 1
   #define CMD_SERIAL 0  // el unico UART es la linea K: comandos solo por Wi-Fi
   HardwareSerial &K = Serial;
@@ -44,6 +48,8 @@
 
 #if HAS_WIFI
 WiFiServer server(23);
+WiFiUDP udp;           // descubrimiento: responde "CLIO <ip> <placa>" a "CLIO?" en el puerto 4210
+bool mdnsOn = false;
 WiFiClient client;
 String tbuf;
 #endif
@@ -294,8 +300,15 @@ void setup() {
   digitalWrite(KTX_GATE_PIN, LOW);  // habilita el TX hacia el transceptor ya pasada la basura del arranque
 #endif
 #if HAS_WIFI && !defined(ROLE_ECUSIM)
+#ifdef STA_SSID
+  // AP propio + cliente del hotspot del móvil: el portátil tiene internet (Claude) y ve el puente a la vez
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(STA_SSID, STA_PASS);
+#else
   WiFi.mode(WIFI_AP);
+#endif
   WiFi.softAP(WIFI_SSID, WIFI_PASS);
+  udp.begin(4210);
   server.begin();
   server.setNoDelay(true);
 #endif
@@ -321,8 +334,32 @@ void loop() {
   emit("DBG", hex(q, n) + " -> " + hex(f, fl));
 }
 #else
+void netTasks() {
+#if HAS_WIFI
+  if (!mdnsOn && WiFi.status() == WL_CONNECTED) {
+    mdnsOn = MDNS.begin("clio-kline");  // clio-kline.local
+    if (mdnsOn) MDNS.addService("telnet", "tcp", 23);
+    emit("DBG", "wifi del movil OK, IP " + WiFi.localIP().toString() + " (clio-kline.local)");
+  }
+#if defined(ESP8266)
+  if (mdnsOn) MDNS.update();
+#endif
+  if (udp.parsePacket()) {
+    char b[8] = {0};
+    udp.read(b, 7);
+    if (!strncmp(b, "CLIO?", 5)) {
+      IPAddress ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP();
+      udp.beginPacket(udp.remoteIP(), udp.remotePort());
+      udp.print(String("CLIO ") + ip.toString() + " " BOARD);
+      udp.endPacket();
+    }
+  }
+#endif
+}
+
 void loop() {
   readLines();
+  netTasks();
   if (ka && !sniff && millis() - lastTx > kaMs) {
     uint8_t k = 0x3E;
     if (!transact(&k, 1, true)) emit("DBG", "keep-alive sin respuesta");

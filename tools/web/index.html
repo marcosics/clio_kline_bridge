@@ -38,6 +38,15 @@ tr.ro td{color:var(--mut)}
 .card{border:1px solid var(--line);border-radius:8px;padding:8px}
 .card small{color:var(--mut);display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card b{font-size:20px;font-variant-numeric:tabular-nums}
+.gauge{width:100%;max-width:180px}
+.big{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.warn{color:var(--err)}
+.bits{display:flex;gap:3px}.bits span{width:22px;height:22px;border:1px solid var(--line);border-radius:4px;display:grid;place-items:center;font-size:11px}
+.bits span.on{background:var(--acc);color:#fff}
+.pages{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.pages button.on{outline:2px solid var(--fg)}
+.ev{font-size:12px;border-bottom:1px solid var(--line);padding:3px 0}.ev b{font-weight:600}
+.ev.averia b,.ev.anomalia b,.ev.ia b{color:var(--err)}
+#ptab{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
 </style>
 </head>
 <body>
@@ -56,7 +65,40 @@ tr.ro td{color:var(--mut)}
   <div class="row" style="margin:6px 0 0"><button id="aok">Hecho</button><button id="ano" class="sec">No puedo</button>
     <input id="atx" placeholder="o escribe la respuesta…" size="30"><button id="asend" class="sec">Enviar</button></div>
 </div>
-<nav id="nav"><button data-t="tab-ai">Claude en vivo</button><button data-t="tab-dash" class="on">Tablero</button><button data-t="tab-dtc">Fallos</button><button data-t="tab-cfg">Configuración</button><button data-t="tab-learn">Aprendizaje</button></nav>
+<nav id="nav"><button data-t="tab-panel" class="on">Panel</button><button data-t="tab-drive">Modo coche</button><button data-t="tab-ai">Claude en vivo</button><button data-t="tab-dash">Tablero</button><button data-t="tab-dtc">Fallos</button><button data-t="tab-cfg">Configuración</button><button data-t="tab-learn">Aprendizaje</button></nav>
+
+<div class="tab on" id="tab-panel">
+<section class="wide" style="padding-bottom:4px">
+  <div class="pages" id="pages"></div>
+  <p class="note" id="pnote">El panel lo diseña la IA (o tú, en tools/ui_layout.json). Datos del registro del Modo coche.</p>
+</section>
+<div id="ptab" style="display:grid;gap:12px;grid-column:1/-1"></div>
+</div>
+
+<div class="tab" id="tab-drive">
+<section>
+  <h2>Registro continuo</h2>
+  <div class="row">UCE <input id="dme" value="7A" size="3"> LIDs <input id="dml" value="A0,A1,A2" size="12"> cada <input id="dper" value="250" size="4"> ms</div>
+  <div class="row">otras UCE <input id="dot" placeholder="28:A0;26:80" size="16"> cada <input id="dos" value="60" size="3"> s</div>
+  <div class="row"><label><input type="checkbox" id="dauto" checked> reconectar solo con lo de arriba</label></div>
+  <div class="row"><button id="dgo">Arrancar</button><button id="dst" class="sec">Parar</button><button id="ddisc" class="sec">Autodescubrir en el registro</button></div>
+  <pre id="dout"></pre>
+  <p class="note">Graba todo en logs/drive_*.jsonl. Si quitas el contacto, espera y reconecta solo. Solo lectura.</p>
+</section>
+<section>
+  <h2>IA automática</h2>
+  <div class="row"><label><input type="checkbox" id="iaen"> activada</label> cada <input id="iamin" value="30" size="3"> min ·
+    máx. <input id="iaruns" value="12" size="2"> veces/día · <input id="iausd" value="3" size="3"> $/día <button id="iasave" class="sec">Guardar</button></div>
+  <p class="note">Mientras registras, Claude revisa solo cada X minutos y cuando hay averías o anomalías nuevas: explica, aprende variables, rediseña el Panel y apunta en su memoria.</p>
+  <div class="row"><input id="chat" placeholder="Pídele lo que quieras: «hazme una página con el consumo», «¿qué le pasa al turbo?»" style="flex:1"><button id="chatgo">Enviar</button></div>
+  <pre id="chatlog" style="max-height:300px"></pre>
+  <div class="row"><button id="memb" class="sec">Ver memoria de la IA</button></div>
+</section>
+<section class="wide">
+  <h2>Eventos</h2>
+  <div id="evs"></div>
+</section>
+</div>
 
 <div class="tab" id="tab-ai">
 <section class="wide">
@@ -80,7 +122,7 @@ tr.ro td{color:var(--mut)}
 </section>
 </div>
 
-<div class="tab on" id="tab-dash">
+<div class="tab" id="tab-dash">
 <section class="wide">
   <h2>Datos en vivo</h2>
   <div class="row">LIDs <input id="lids" value="A0,A1,A2" size="14"> cada <input id="per" value="500" size="4"> ms <button id="bl">Iniciar</button>
@@ -175,7 +217,7 @@ const show=(el,x)=>$(el).textContent=typeof x==='string'?x:JSON.stringify(x,null
 async function guard(el,fn){try{await fn()}catch(e){show(el,'ERROR: '+e.message)}}
 $('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;
   document.querySelectorAll('nav button,.tab').forEach(x=>x.classList.remove('on'));e.target.classList.add('on');$(t).classList.add('on');
-  if(t==='tab-cfg')loadCfg();if(t==='tab-learn')loadVars()};
+  if(t==='tab-cfg')loadCfg();if(t==='tab-learn')loadVars();if(t==='tab-panel'&&UI)renderPages();if(t==='tab-drive')drivePoll()};
 
 async function status(){
   const s=await api('/api/status');
@@ -245,7 +287,7 @@ $('rqf').oninput=renderReqs;
 // ---- Claude en vivo, exploracion, informes, preguntas ----
 let aiNext=0,aiTimer=null;
 async function aiPoll(){try{const r=await api('/api/ai/log?since='+aiNext);aiNext=r.next;
-  if(r.lines.length){$('ailog').textContent+=r.lines.join('\n')+'\n';$('ailog').scrollTop=1e9}
+  if(r.lines.length){for(const el of ['ailog','chatlog']){$(el).textContent+=r.lines.join('\n')+'\n';$(el).scrollTop=1e9}}
   if(r.running) aiTimer=setTimeout(aiPoll,1000); else {aiTimer=null;loadReports()}}catch(e){aiTimer=null}}
 $('ais').onclick=()=>guard('ailog',async()=>{$('ailog').textContent='';aiNext=0;await api('/api/ai/start',{goal:$('goal').value});if(!aiTimer)aiPoll()});
 $('aix').onclick=()=>guard('ailog',()=>api('/api/ai/stop',{}));
@@ -287,6 +329,72 @@ $('bk').onclick=()=>guard('con',async()=>{const l=$('cl').value;const r=(await a
   $('con').textContent=`> ${l}\n${typeof r==='string'?r:r.join('\n')}\n`+$('con').textContent});
 $('cl').onkeydown=e=>{if(e.key==='Enter')$('bk').click()};
 $('bsl').onclick=()=>guard('con',async()=>show('con',(await api('/api/serial_log?n=200')).lines.join('\n')||'(sin log: solo con el puente ESP)'));
+
+// ---- Panel (lo diseña la IA) ----
+let UI=null,UIS='',page=null,series={};
+const fmt=v=>v==null?'—':typeof v==='number'?(Math.abs(v)>=100?v.toFixed(0):+v.toFixed(2)):esc(v);
+const tr=(w,v)=>v==null||typeof v!=='number'?v:v*(w.scale??1)+(w.offset??0);
+async function loadUI(){const u=await api('/api/ui');const j=JSON.stringify(u);if(j===UIS)return;UIS=j;UI=u;
+  if(!page||!UI.pages.find(p=>p.id===page))page=UI.pages[0]?.id;renderPages()}
+function renderPages(){$('pages').innerHTML=UI.pages.map(p=>`<button class="sec${p.id===page?' on':''}" data-pg="${esc(p.id)}">${esc(p.title||p.id)}</button>`).join('');
+  const P=UI.pages.find(p=>p.id===page);if(!P)return;
+  $('ptab').innerHTML=P.widgets.map((w,i)=>`<section${['chart','events','raw','table','text','request'].includes(w.type)&&w.wide!==false?' class="wide"':''}><h2>${esc(w.title||w.key||w.type)}</h2><div id="w${i}"></div>${w.note?`<p class="note">${esc(w.note)}</p>`:''}</section>`).join('');
+  P.widgets.forEach((w,i)=>{if(w.type==='text')$('w'+i).innerHTML=`<p>${esc(w.text).replace(/\n/g,'<br>')}</p>`;
+    if(w.type==='request')$('w'+i).innerHTML=`<div class="row"><button class="sec" data-req="${esc(w.name)}">Leer «${esc(w.name)}»</button></div><pre id="wr${i}"></pre>`});
+  refreshPanel()}
+$('pages').onclick=e=>{const p=e.target.dataset.pg;if(p){page=p;renderPages()}};
+$('ptab').onclick=e=>{const n=e.target.dataset.req;if(!n)return;const out=e.target.parentElement.nextElementSibling;
+  api('/api/db/read',{name:n}).then(r=>out.textContent=`→ ${r.sent} ← ${r.resp}\n`+r.values.map(v=>`${v.name} = ${v.value} ${v.unit}`).join('\n'))
+   .catch(err=>out.textContent=/bloqueado/.test(err.message)?'Es una ESCRITURA: no se hace desde aquí. Cámbiala a mano en DDT4ALL (petición «'+n+'»), con copia previa y cargador.':'ERROR: '+err.message)};
+function gauge(w,v){const mn=w.min??0,mx=w.max??100,x=v==null?0:Math.max(0,Math.min(1,(v-mn)/(mx-mn))),a=Math.PI*(1-x);
+  const warn=v!=null&&((w.warn_hi!=null&&v>w.warn_hi)||(w.warn_lo!=null&&v<w.warn_lo));
+  return `<svg class="gauge" viewBox="0 0 120 70"><path d="M10,60 A50,50 0 0 1 110,60" fill="none" stroke="var(--line)" stroke-width="10"/>
+   <path d="M10,60 A50,50 0 0 1 ${60+50*Math.cos(a)},${60-50*Math.sin(a)}" fill="none" stroke="${warn?'var(--err)':'var(--acc)'}" stroke-width="10"/>
+   <text x="60" y="58" text-anchor="middle" font-size="18" fill="currentColor">${fmt(v)}</text><text x="60" y="69" text-anchor="middle" font-size="8" fill="var(--mut)">${esc(w.unit||'')}</text></svg>`}
+function chart(w,keys){const W=600,H=120,all=keys.flatMap(k=>series[k]||[]);if(!all.length)return '<p class="note">sin datos (¿registro parado?)</p>';
+  const t0=Math.min(...all.map(p=>p[0])),t1=Math.max(...all.map(p=>p[0])),vs=all.map(p=>tr(w,p[1]));let lo=w.min??Math.min(...vs),hi=w.max??Math.max(...vs);if(hi===lo)hi=lo+1;
+  const cols=['var(--acc)','#e76f51','#2a9d8f','#f4a261','#7b2cbf'];
+  return `<svg viewBox="0 0 ${W} ${H+14}" style="width:100%">${keys.map((k,j)=>`<polyline fill="none" stroke="${cols[j%5]}" stroke-width="2" points="${(series[k]||[]).map(p=>`${((p[0]-t0)/(t1-t0||1)*W).toFixed(1)},${(H-(tr(w,p[1])-lo)/(hi-lo)*H).toFixed(1)}`).join(' ')}"/>`).join('')}
+   <text x="2" y="10" font-size="10" fill="var(--mut)">${fmt(hi)}</text><text x="2" y="${H}" font-size="10" fill="var(--mut)">${fmt(lo)}</text>
+   ${keys.map((k,j)=>`<text x="${80+j*130}" y="${H+12}" font-size="10" fill="${cols[j%5]}">${esc(k)}</text>`).join('')}</svg>`}
+let ptick=0;
+async function refreshPanel(){if(!UI||!$('tab-panel').classList.contains('on'))return;const P=UI.pages.find(p=>p.id===page);if(!P)return;
+  const keys=new Set(),ck=new Set();P.widgets.forEach(w=>{(w.keys||(w.key?[w.key]:[])).forEach(k=>{if(k.split(':').length>2)(w.type==='chart'?ck:keys).add(k)})});
+  try{const vals=keys.size?await api('/api/drive/values?keys='+encodeURIComponent([...keys].join(','))):{};
+    if(ck.size&&ptick++%2===0)Object.assign(series,await api('/api/drive/series?n=200&key='+encodeURIComponent([...ck].join(','))));
+    const need=t=>P.widgets.some(w=>w.type===t);
+    const lat=need('raw')?await api('/api/drive/latest'):{};
+    const evs=(need('events')||need('dtc'))?(await api('/api/events?minutes=240')).events:[];
+    P.widgets.forEach((w,i)=>{const el=$('w'+i);if(!el)return;const v=tr(w,vals[w.key]);
+      const warn=v!=null&&((w.warn_hi!=null&&v>w.warn_hi)||(w.warn_lo!=null&&v<w.warn_lo));
+      if(w.type==='value')el.innerHTML=`<span class="big${warn?' warn':''}">${fmt(v)}</span> ${esc(w.unit||'')}`;
+      else if(w.type==='gauge')el.innerHTML=gauge(w,v);
+      else if(w.type==='chart')el.innerHTML=chart(w,w.keys||[w.key]);
+      else if(w.type==='bits'){const b=vals[w.key];el.innerHTML=`<div class="bits">${[7,6,5,4,3,2,1,0].map(k=>`<span class="${b!=null&&(b>>k)&1?'on':''}" title="${esc((w.labels||{})[k]||'bit '+k)}">${esc((w.labels||{})[k]||k)}</span>`).join('')}</div>`}
+      else if(w.type==='table')el.innerHTML=`<table>${(w.keys||[]).map(k=>`<tr><td class="l">${esc((w.labels||{})[k]||k)}</td><td>${fmt(tr(w,vals[k]))}</td></tr>`).join('')}</table>`;
+      else if(w.type==='raw'){const x=lat[(w.key||'').toUpperCase()];el.innerHTML=x?`<div class="scroll"><table><tr>${x.bytes.map((_,j)=>`<th>${j}</th>`).join('')}</tr><tr>${x.bytes.map(b=>`<td>${hx(b)}</td>`).join('')}</tr><tr>${x.bytes.map(b=>`<td>${b}</td>`).join('')}</tr></table></div>`:'<p class="note">sin datos</p>'}
+      else if(w.type==='events')el.innerHTML=evs.slice(-30).reverse().map(e=>`<div class="ev ${e.kind}"><b>${new Date(e.t*1000).toLocaleTimeString()} · ${esc(e.kind)}</b> ${esc(e.text)}</div>`).join('')||'<p class="note">sin eventos</p>';
+      else if(w.type==='dtc')el.innerHTML=evs.filter(e=>e.kind==='averia').map(e=>`<div class="ev averia"><b>${esc(e.code||'')}</b> ${esc(e.text)}</div>`).join('')||'<p class="note">sin averías nuevas en este registro</p>'});
+  }catch(e){$('pnote').textContent='ERROR: '+e.message}}
+setInterval(refreshPanel,1000);setInterval(()=>loadUI().catch(()=>{}),5000);loadUI().catch(e=>$('pnote').textContent='ERROR: '+e.message);
+
+// ---- Modo coche ----
+const plan=()=>({main_ecu:$('dme').value.toUpperCase(),main_lids:$('dml').value.toUpperCase().split(',').filter(x=>x),period_ms:+$('dper').value,
+  other_every_s:+$('dos').value,others:$('dot').value.split(';').filter(x=>x.trim()).map(o=>({ecu:o.split(':')[0].toUpperCase(),lids:(o.split(':')[1]||'').toUpperCase().split(',').filter(x=>x),dtc:true}))});
+$('dgo').onclick=()=>guard('dout',async()=>show('dout',await api('/api/drive/start',{plan:plan(),auto:$('dauto').checked?conn():null})));
+$('dst').onclick=()=>guard('dout',async()=>show('dout',await api('/api/drive/stop',{})));
+$('ddisc').onclick=()=>guard('dout',async()=>{show('dout','analizando…');show('dout',await api('/api/discover',{}))});
+async function drivePoll(){if(!$('tab-drive').classList.contains('on'))return;
+  try{const s=await api('/api/drive/status');if(!$('dout').dataset.busy)$('st').title=s.state;
+    const e=(await api('/api/events?minutes=240')).events;
+    $('evs').innerHTML=`<p class="note">${s.running?'● registrando':'parado'} · ${esc(s.state)} · ${s.samples} lecturas · ${esc(s.file||'')}</p>`+
+      (e.slice(-60).reverse().map(x=>`<div class="ev ${x.kind}"><b>${new Date(x.t*1000).toLocaleTimeString()} · ${esc(x.kind)}</b> ${esc(x.text)}</div>`).join('')||'<p class="note">sin eventos</p>')}catch{}}
+setInterval(drivePoll,3000);
+api('/api/ai/auto',{}).then(a=>{$('iaen').checked=a.enabled;$('iamin').value=a.interval_min;$('iaruns').value=a.max_runs_day;$('iausd').value=a.max_usd_day}).catch(()=>{});
+$('iasave').onclick=()=>guard('chatlog',async()=>show('chatlog',await api('/api/ai/auto',{enabled:$('iaen').checked,interval_min:+$('iamin').value,max_runs_day:+$('iaruns').value,max_usd_day:+$('iausd').value})));
+$('chatgo').onclick=()=>guard('chatlog',async()=>{await api('/api/ai/chat',{text:$('chat').value});$('chat').value='';if(!aiTimer)aiPoll()});
+$('chat').onkeydown=e=>{if(e.key==='Enter')$('chatgo').click()};
+$('memb').onclick=()=>guard('chatlog',async()=>show('chatlog',(await api('/api/memory')).text));
 status();
 </script>
 </body>

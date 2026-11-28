@@ -22,6 +22,10 @@ Leyenda: ✅ hecho y probado con el simulador · 🟡 hecho, falta el coche o un
 | Luces | 🟡 | Filtro «Luces» de la UCH. Depende de la base DDT y de que la UCH responda. |
 | Sniffer y log serie del micro | 🟡 | `SNIFF ON` y «Log serie», solo con el puente ESP. |
 | Línea L | — | No hace falta: el diagnóstico del Clio II va por la K (pin 7), también el init a 5 baudios. |
+| Modo coche: registro continuo, anomalías y autodescubrimiento | ✅ | `MODO_COCHE.md`, `arrancar_coche.bat`. Probado con el simulador (con ABS simulado). Falta el coche. |
+| Panel que diseña la IA y memoria de la IA | ✅ | Pestaña Panel (`tools/ui_layout.json`), herramientas `ui_page`/`memory_add`. |
+| IA automática y chat en el coche | 🟡 | `--ia-auto 30` y chat en Modo coche. Falta probarlo con Claude real en el coche. |
+| ESP en el hotspot del móvil | 🟡 | Firmware compila (esp01, d1mini). Falta poner tu wifi en `[movil]` y probarlo. |
 | Ordenador de a bordo (consumo, autonomía, temperaturas, rail, turbo) | ⏳ | Fórmulas en CLAUDE.md §7. Falta identificar el caudal (PR017) y la velocidad en el coche. |
 | Pantalla ESP32 y Android | ⏳ | Fase 3, cuando tengamos las variables. |
 | Programar el ESP desde la web | ⏳ | Pendiente. Por ahora `python -m platformio run -d firmware -e esp32 -t upload`. |

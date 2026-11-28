@@ -9,7 +9,7 @@ SOLO LECTURA en el coche: lista blanca de CLAUDE.md sec. 6. Escrituras de config
   pip install pyserial
   python tools/clio_web.py            -> http://localhost:8080
 """
-import json, socket, subprocess, sys, threading, time
+import argparse, json, shutil, socket, subprocess, sys, threading, time
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -17,6 +17,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, str(Path(__file__).parent))
 import ddt_db
+import clio_drive
 from clio_kline import diff
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,28 +55,50 @@ def frame_data(b):
     return b[hdr:hdr + n]
 
 
-def sim_answer(q):
-    """Misma UCE simulada que firmware/src/main.cpp simAnswer()."""
+def sim_drive(t):
+    """Ciclo de conducción simulado (60 s): rpm, velocidad, temperatura, freno."""
+    ph = t % 60
+    v = 0 if ph < 8 else min(90, (ph - 8) * 3) if ph < 40 else max(0, 90 - (ph - 40) * 5)
+    gear = 1 if v < 15 else 2 if v < 30 else 3 if v < 50 else 4 if v < 70 else 5
+    rpm = 820 if v == 0 else int(v * (130, 75, 50, 38, 31)[gear - 1] + 900)
+    temp = min(88, 20 + (t - SIM_T0) / 4)
+    brake = 1 if 40 <= ph < 52 else 0
+    return rpm, v, temp, brake
+
+
+SIM_T0 = time.time()
+
+
+def sim_answer(q, ecu="7A"):
+    """Misma UCE simulada que firmware/src/main.cpp simAnswer(), con un ciclo de conducción para probar el modo coche."""
     s = q[0]
     if s == 0x81: return bytes([0xC1, 0xEF, 0x8F])
     if s == 0x10: return bytes([0x50, q[1]])
     if s == 0x3E: return b"\x7E"
     if s in (0x17, 0x18): return bytes([s + 0x40, 1, 0x01, 0x23, 0xA0])
-    if s == 0x21 and q[1] in (0x80, 0xA0, 0xA1, 0xA2):
+    rpm, v, temp, brake = sim_drive(time.time())
+    if ecu == "28" and s == 0x21 and q[1] == 0xA0:   # ABS: velocidad de las 4 ruedas, km/h x 100, little endian
+        return bytes([0x61, 0xA0]) + b"".join(int(v * 100 + i * 7).to_bytes(2, "little") for i in range(4))
+    if s == 0x21 and q[1] in (0x80, 0xA0, 0xA1, 0xA2) and ecu != "28":
         r = bytearray([0x61, q[1]] + [(q[1] * 7 + i * 13) & 0xFF for i in range(2, 26)])
-        rpm = 800 + int(time.time() * 10) % 40 * 5
-        if q[1] == 0xA1: r[2:4] = rpm.to_bytes(2, "little")
+        if q[1] == 0xA1:
+            r[2:4] = rpm.to_bytes(2, "little")
+            r[6] = int(temp + 40)
+        if q[1] == 0xA2:
+            r[5] = int(v)
+            r[7] = 0x10 | brake
         if q[1] == 0x80: r[2:15] = b"SIM8200212348"
         return bytes(r)
     return bytes([0x7F, s, 0x12 if s == 0x21 else 0x11])
 
 
 class SimBackend:
-    def __init__(self, address, baud): pass
+    def __init__(self, address, baud): self.ecu = "7A"
     def connect(self, ecu, init="fast"):
-        ok = ecu in ("7A", "26")  # el simulador solo "tiene" inyeccion y UCH
+        ok = ecu in ("7A", "26", "28")  # el simulador "tiene" inyección, UCH y ABS
+        self.ecu = ecu
         return ok, {"init": "OK (simulado)" if ok else "sin respuesta (simulado)", "10C0": self.req("10C0") if ok else ""}
-    def req(self, h): return sim_answer(bytes.fromhex(h)).hex().upper()
+    def req(self, h): return sim_answer(bytes.fromhex(h), self.ecu).hex().upper()
     def close(self): pass
 
 
@@ -103,10 +126,31 @@ class ElmBackend:
     def close(self): self.e.s.close()
 
 
+def discover_bridge(timeout=2.0):
+    """Busca el puente ESP: mDNS clio-kline.local, difusión UDP 'CLIO?' al puerto 4210 y por último su AP 192.168.4.1."""
+    try:
+        return socket.gethostbyname("clio-kline.local")
+    except OSError:
+        pass
+    try:
+        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        u.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        u.settimeout(timeout)
+        u.sendto(b"CLIO?", ("255.255.255.255", 4210))
+        data, addr = u.recvfrom(128)
+        if data.startswith(b"CLIO"):
+            return addr[0]
+    except OSError:
+        pass
+    return "192.168.4.1"
+
+
 class BridgeBackend:
     """Firmware propio. address: COM5 o tcp:192.168.4.1:23"""
     def __init__(self, address, baud):
         self.lines, self._buf = [], b""
+        if address.lower() in ("", "auto"):
+            address = "tcp:" + discover_bridge() + ":23"
         if address.lower().startswith("tcp:"):
             host, port = address[4:].rsplit(":", 1)
             self.sock, self.ser = socket.create_connection((host, int(port)), 5), None
@@ -167,7 +211,13 @@ BACKENDS = {"sim": SimBackend, "elm": ElmBackend, "bridge": BridgeBackend}
 state = {"b": None, "ecu": "7A", "kind": None, "lock": threading.Lock(), "db": None,
          "rec": {"stop": None, "file": None, "label": "", "lids": [], "n": 0},
          "job": {"name": None, "running": False, "progress": "", "file": None, "stop": threading.Event()},
-         "ai": {"proc": None, "log": [], "file": None, "ask": None, "answer": None, "answered": threading.Event()}}
+         "ai": {"proc": None, "log": [], "file": None, "ask": None, "answer": None, "answered": threading.Event(),
+                "session": None},
+         "ai_auto": {"enabled": False, "interval_min": 30, "max_runs_day": 12, "max_usd_day": 3.0, "last": 0.0,
+                     "day": "", "runs": 0, "cost": 0.0}}
+
+
+drive = clio_drive.Drive(sys.modules[__name__])
 
 
 def db():
@@ -233,16 +283,21 @@ def decode_local(lid, data):
     return out
 
 
+def decode_all(lid, d, r):
+    """Variables de una respuesta 61xx: tabla aprendida (local) + base DDT4ALL si está cargada."""
+    out = decode_local(lid, d)
+    req = db().by_sent("21" + lid)
+    if req:
+        out += [dict(v, src="ddt") for v in db().decode_request(req, r)]
+    return out
+
+
 def read_lid(lid, log_it=True):
     r = request("21" + lid, log_it)
     if not r.startswith("61" + lid):
         return {"error": r}
     d = bytes.fromhex(r[4:])
-    out = {"bytes": list(d), "decoded": decode_local(lid, d)}
-    req = db().by_sent("21" + lid)
-    if req:
-        out["decoded"] += [dict(v, src="ddt") for v in db().decode_request(req, r)]
-    return out
+    return {"bytes": list(d), "decoded": decode_all(lid, d, r)}
 
 
 # ---------- aprendizaje: grabacion con marcas y analisis de diferencias ----------
@@ -399,10 +454,17 @@ def _ai_reader(proc, fn):
             except ValueError:
                 ev = {"type": "raw", "text": line.strip()}
             out = []
+            if ev.get("session_id"):
+                ai["session"] = ev["session_id"]
+            if ev.get("type") == "result":
+                state["ai_auto"]["cost"] += float(ev.get("total_cost_usd") or 0)
             if ev.get("type") == "assistant":
                 for c in ev["message"].get("content", []):
                     if c.get("type") == "text":
                         out.append("💬 " + c["text"])
+                        for l in c["text"].splitlines():
+                            if l.strip().startswith("ALERTA"):
+                                drive.event("ia", l.strip())
                     elif c.get("type") == "tool_use":
                         out.append(f"🔧 {c['name'].replace('mcp__clio-kline__', '')} {json.dumps(c.get('input', {}), ensure_ascii=False)[:200]}")
             elif ev.get("type") == "user":
@@ -421,23 +483,90 @@ def _ai_reader(proc, fn):
     ai["proc"] = None
 
 
-def ai_start(goal):
+AUTO_PROMPT = """Modo coche, revisión automática ({motivo}). Estás conectado al Clio por el MCP clio-kline.
+Contexto: CLAUDE.md. Empieza leyendo tu memoria con memory_get (lo que ya sabes del coche).
+1. drive_status y events (desde hace {desde} min): ¿qué ha pasado? Interpreta averías y anomalías y di causas probables.
+2. drive_summary y, si hay registro, analyze_drive: canales que varían, bits que conmutan y parejas correlacionadas.
+   Relaciónalo con lo que ya sabes y con la base DDT (db_search) para identificar variables nuevas.
+   Guarda con decode_set solo lo que tenga evidencia clara (con la evidencia en note); hipótesis con nombre "?...".
+3. Mejora el panel con ui_page: lo importante arriba (lo que avisa de fallos), lo nuevo que descubras, y páginas de
+   configuración con widgets 'request' de la base DDT para ver cada parámetro (cambiarlos es a mano con DDT4ALL).
+4. Si necesitas un cálculo, escribe un script en analisis/ y ejecútalo con python (lee logs/, nunca abre el puerto).
+5. memory_add con lo aprendido y lo pendiente, en pocas líneas.
+6. Si hay algo urgente (avería nueva, temperatura alta, presión de rail anómala...), escribe una línea que empiece por ALERTA:.
+No uses ask_user si drive_status dice que se está registrando (el usuario conduce).
+Nunca intentes escribir en una centralita ni borrar averías: está bloqueado y no se debe intentar."""
+
+
+def _claude_cmd(prompt, resume=None):
+    exe = shutil.which("claude") or "claude"   # en Windows encuentra claude.cmd
+    cmd = [exe, "-p", prompt, "--output-format", "stream-json", "--verbose",
+           "--mcp-config", str(ROOT / ".mcp.json"), "--strict-mcp-config",
+           "--allowedTools", "mcp__clio-kline", "Read", "Grep", "Glob", "Write(informes/**)", "Write(analisis/**)",
+           "Edit(analisis/**)", "Bash(python analisis/*)"]
+    if resume:
+        cmd += ["--resume", resume]
+    return cmd
+
+
+def ai_run(prompt, title, resume=None):
     ai = state["ai"]
     if ai["proc"]:
         raise RuntimeError("Claude ya está en marcha")
+    (ROOT / "analisis").mkdir(exist_ok=True)
+    fn = REPORTS / f"claude_{datetime.now():%Y%m%d_%H%M%S}.log"
+    ai["log"].append(f"▶ {title}")
+    ai["file"] = fn.name
+    ai["proc"] = subprocess.Popen(_claude_cmd(prompt, resume), cwd=ROOT, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    threading.Thread(target=_ai_reader, args=(ai["proc"], fn), daemon=True).start()
+    return {"ok": True, "log": fn.name}
+
+
+def ai_start(goal):
     if not state["b"]:
         raise RuntimeError("conecta primero")
     prompt = AI_PROMPT.format(goal=goal or "entender todo el coche: datos, averías, centralitas, y recomendar",
                               fecha=datetime.now().strftime("%Y%m%d_%H%M"))
-    cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
-           "--mcp-config", str(ROOT / ".mcp.json"), "--strict-mcp-config",
-           "--allowedTools", "mcp__clio-kline", "Read", "Grep", "Glob", "Write(informes/**)"]
-    fn = REPORTS / f"claude_{datetime.now():%Y%m%d_%H%M%S}.log"
-    ai.update(log=[f"▶ Claude en vivo: {goal or 'exploración completa'}"], file=fn.name)
-    ai["proc"] = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                  encoding="utf-8", errors="replace")
-    threading.Thread(target=_ai_reader, args=(ai["proc"], fn), daemon=True).start()
-    return {"ok": True, "log": fn.name}
+    return ai_run(prompt, f"Claude en vivo: {goal or 'exploración completa'}")
+
+
+def ai_chat(text):
+    """Pregunta libre a Claude; sigue la misma conversación (--resume) para que recuerde el contexto."""
+    ai = state["ai"]
+    prompt = text if ai.get("session") else (
+        "Eres el asistente del Clio del usuario, conectado por el MCP clio-kline (lee CLAUDE.md y memory_get). "
+        "Puedes leer datos, analizar registros, guardar variables (decode_set), rediseñar el panel (ui_page) y apuntar "
+        "en tu memoria (memory_add). Nunca escribas en una centralita. Petición del usuario: " + text)
+    return ai_run(prompt, "Tú: " + text, ai.get("session"))
+
+
+def ai_supervisor():
+    """IA automática en el coche: revisa cada N minutos o cuando hay averías/anomalías nuevas, con tope diario."""
+    auto, last_ev = state["ai_auto"], 0
+    while True:
+        time.sleep(20)
+        if not auto["enabled"] or state["ai"]["proc"]:
+            continue
+        today = datetime.now().strftime("%Y%m%d")
+        if auto["day"] != today:
+            auto.update(day=today, runs=0, cost=0.0)
+        if auto["runs"] >= auto["max_runs_day"] or auto["cost"] >= auto["max_usd_day"]:
+            continue
+        now = time.time()
+        new = [e for e in drive.events if e["t"] > last_ev and e["kind"] in ("averia", "anomalia", "descubrimiento")]
+        due = now - auto["last"] > auto["interval_min"] * 60
+        hot = new and now - auto["last"] > 300
+        if not (due or hot) or not drive.status()["running"]:
+            continue
+        last_ev = max([e["t"] for e in new] + [last_ev])
+        motivo = f"{len(new)} eventos nuevos" if hot else f"revisión cada {auto['interval_min']} min"
+        desde = int((now - auto["last"]) / 60) if auto["last"] else 60
+        auto.update(last=now, runs=auto["runs"] + 1)
+        try:
+            ai_run(AUTO_PROMPT.format(motivo=motivo, desde=desde), f"IA automática: {motivo}")
+        except Exception as e:
+            state["ai"]["log"].append(f"⚠ IA automática: {e}")
 
 
 def ai_ask(text, timeout=300):
@@ -609,6 +738,49 @@ def api(path, q, body):
         state["ai"]["answer"] = body.get("answer", "hecho")
         state["ai"]["answered"].set()
         return {"ok": True}
+    # ---------- modo coche: registro continuo, eventos, descubrimiento, panel y memoria ----------
+    if path == "/api/drive/start":
+        return drive.start(body.get("plan"), body.get("auto"))
+    if path == "/api/drive/stop":
+        return drive.stop()
+    if path == "/api/drive/status":
+        return drive.status()
+    if path == "/api/drive/latest":
+        return {k: v for k, v in drive.latest.items()}
+    if path == "/api/drive/series":
+        keys = q.get("key", [""])[0].split(",")
+        n = int(q.get("n", ["300"])[0])
+        return {k: drive.series(k, n) for k in keys if k.count(":") >= 2}
+    if path == "/api/drive/values":
+        return {k: drive.resolve(k) for k in q.get("keys", [""])[0].split(",") if k.count(":") >= 2}
+    if path == "/api/drive/summary":
+        return drive.summary(int(q.get("top", ["40"])[0]))
+    if path == "/api/events":
+        since = time.time() - float(q.get("minutes", ["60"])[0]) * 60
+        kinds = [k for k in q.get("kinds", [""])[0].split(",") if k]
+        return {"events": [e for e in drive.events if e["t"] >= since and (not kinds or e["kind"] in kinds)]}
+    if path == "/api/drives":
+        return {"files": sorted((p.name for p in LOGS.glob("drive_*.jsonl")), reverse=True)}
+    if path == "/api/discover":
+        name = body.get("file") or (drive.file.name if drive.file else "")
+        if not name:
+            raise RuntimeError("no hay registro: arranca el modo coche")
+        return clio_drive.analyze_drive(LOGS / Path(name).name)
+    if path == "/api/ui":
+        return clio_drive.ui_save(body["ui"]) if body.get("ui") else clio_drive.ui_get()
+    if path == "/api/ui/page":
+        return clio_drive.ui_page(body["page"])
+    if path == "/api/memory":
+        return clio_drive.memory_add(body["text"], body.get("section", "Notas")) if body.get("text") else \
+            {"text": clio_drive.memory_get()}
+    if path == "/api/ai/auto":
+        a = state["ai_auto"]
+        for k in ("enabled", "interval_min", "max_runs_day", "max_usd_day"):
+            if k in body:
+                a[k] = type(a[k])(body[k])
+        return {k: v for k, v in a.items()}
+    if path == "/api/ai/chat":
+        return ai_chat(body["text"])
     if path == "/api/reports":
         return {"files": sorted((p.name for p in REPORTS.glob("*") if p.suffix in (".md", ".log")), reverse=True)}
     if path == "/api/report":
@@ -648,7 +820,30 @@ class Server(ThreadingHTTPServer):
     allow_reuse_address = False  # en Windows, True deja arrancar dos servidores en el mismo puerto
 
 
+def main():
+    ap = argparse.ArgumentParser(description="Web de diagnóstico del Clio (único tester de la línea K)")
+    ap.add_argument("port", nargs="?", type=int, default=8080)
+    ap.add_argument("--lan", action="store_true", help="abrir también a la red (ver el panel desde el móvil)")
+    ap.add_argument("--auto", help="conectar solo y reconectar: bridge:auto · bridge:tcp:IP:23 · elm:COM5 · sim")
+    ap.add_argument("--drive", action="store_true", help="arrancar el registro continuo (modo coche)")
+    ap.add_argument("--lids", default="A0,A1,A2", help="LIDs de la UCE principal en el registro")
+    ap.add_argument("--otras", default="", help="otras UCE a visitar, p. ej. 28:A0,A1;26:80")
+    ap.add_argument("--ia-auto", type=int, default=0, metavar="MIN", help="IA automática cada MIN minutos (0 = no)")
+    a = ap.parse_args()
+    threading.Thread(target=ai_supervisor, daemon=True).start()
+    if a.auto:
+        backend, _, address = a.auto.partition(":")
+        drive.auto = {"backend": backend, "address": address, "baud": 0}
+    if a.drive or a.auto:
+        others = [{"ecu": o.split(":")[0].upper(), "lids": [l for l in o.split(":")[1].split(",") if l] if ":" in o else [],
+                   "dtc": True} for o in a.otras.split(";") if o.strip()]
+        drive.start({"main_lids": [l for l in a.lids.upper().split(",") if l], "others": others})
+    if a.ia_auto:
+        state["ai_auto"].update(enabled=True, interval_min=a.ia_auto)
+    host = "0.0.0.0" if a.lan else "127.0.0.1"
+    print(f"http://localhost:{a.port}  (log: {LOG})" + ("  · abierta a la red" if a.lan else ""))
+    Server((host, a.port), H).serve_forever()
+
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
-    print(f"http://localhost:{port}  (log: {LOG})")
-    Server(("127.0.0.1", port), H).serve_forever()
+    main()

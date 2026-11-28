@@ -15,7 +15,9 @@ mcp = MCPServer("clio-kline", instructions=(
     "Diagnostico del Renault Clio II 1.5 dCi (UCE Delphi DDCR 0x7A) por linea K, a traves de la web local clio_web.py. "
     "Flujo: status -> connect -> ident -> read_dtc / live / scan_lids. Para descubrir que significa cada byte: "
     "learn_start, pedir al usuario la accion, learn_mark, learn_stop, learn_analyze; luego guardar lo aprendido con "
-    "decode_set. Nunca se puede escribir en la UCE desde aqui: configuraciones con DDT4ALL a mano."))
+    "decode_set. Modo coche: drive_status/drive_summary/events/analyze_drive para el registro continuo; ui_get/ui_page "
+    "para disenar el panel de la web; memory_get/memory_add para tu memoria entre sesiones. "
+    "Nunca se puede escribir en la UCE desde aqui: configuraciones con DDT4ALL a mano."))
 
 
 def call(path, body=None, timeout=600):
@@ -173,6 +175,106 @@ def db_search(text: str) -> str:
 def db_read(request_name: str) -> str:
     """Envia una peticion de LECTURA definida en la base DDT4ALL y la decodifica con sus definiciones."""
     return call("/api/db/read", {"name": request_name})
+
+
+# ---------------------------------------------------------------- modo coche
+@mcp.tool()
+def drive_start(main_ecu: str = "7A", main_lids: str = "A0,A1,A2", period_ms: int = 250,
+                others: str = "", other_every_s: int = 60, dtc_every_s: int = 60) -> str:
+    """Arranca el registro continuo (logs/drive_*.jsonl). others: 'ECU:LID,LID;ECU:LID' (p. ej. '28:A0;26:80'),
+    se visitan cada other_every_s segundos. Reconecta solo si se cae la linea."""
+    oth = [{"ecu": o.split(":")[0].upper(), "lids": o.split(":")[1].upper().split(",") if ":" in o else [], "dtc": True}
+           for o in others.split(";") if o.strip()]
+    return call("/api/drive/start", {"plan": {"main_ecu": main_ecu.upper(), "main_lids": main_lids.upper().split(","),
+                                              "period_ms": period_ms, "others": oth, "other_every_s": other_every_s,
+                                              "dtc_every_s": dtc_every_s}})
+
+
+@mcp.tool()
+def drive_stop() -> str:
+    """Para el registro continuo."""
+    return call("/api/drive/stop", {})
+
+
+@mcp.tool()
+def drive_status() -> str:
+    """Estado del registro continuo: en marcha, muestras, archivo, plan, eventos y canales vigilados."""
+    return call("/api/drive/status")
+
+
+@mcp.tool()
+def drive_summary(top: int = 40) -> str:
+    """Canales que varian (byte bN, u16 little endian uN y variables v:nombre) con media, desviacion, min, max y
+    numero de cambios, mas la ultima respuesta de cada UCE:LID."""
+    return call(f"/api/drive/summary?top={top}")
+
+
+@mcp.tool()
+def drive_series(keys: str, n: int = 300) -> str:
+    """Serie temporal reciente [t, valor] de una o varias claves separadas por comas:
+    '7A:A1:rpm' (variable), '7A:A1:b3' (byte), '7A:A1:u3' (u16 LE), '7A:A1:b5.2' (bit)."""
+    return call(f"/api/drive/series?key={keys}&n={n}")
+
+
+@mcp.tool()
+def events(minutes: float = 60, kinds: str = "") -> str:
+    """Eventos del modo coche: averia, anomalia, descubrimiento (byte dormido que despierta), comunicacion, conexion,
+    ia (alertas). kinds: filtro separado por comas."""
+    return call(f"/api/events?minutes={minutes}&kinds={kinds}")
+
+
+@mcp.tool()
+def drives() -> str:
+    """Lista los registros de conduccion guardados (logs/drive_*.jsonl)."""
+    return call("/api/drives")
+
+
+@mcp.tool()
+def analyze_drive(file: str = "") -> str:
+    """Autodescubrimiento sobre un registro (el actual si no se indica): canales que varian, contadores, bits que
+    conmutan (con instantes) y parejas de canales muy correlacionadas (|r|>0.85)."""
+    return call("/api/discover", {"file": file})
+
+
+@mcp.tool()
+def ui_get() -> str:
+    """Panel de la web (tools/ui_layout.json): paginas y widgets. Lee '_ayuda' para los tipos y claves."""
+    return call("/api/ui")
+
+
+@mcp.tool()
+def ui_page(page_json: str) -> str:
+    """Crea o sustituye una pagina del panel. JSON: {"id","title","widgets":[...]}. Tipos de widget: value, gauge
+    (min,max), chart (key o keys), bits (key de byte), table (keys), text (text), dtc, events, request (name de la base
+    DDT: lectura = boton leer; escritura = solo instrucciones para DDT4ALL), raw (key 'ECU:LID').
+    Campos comunes: title, key, unit, scale, offset, warn_hi, warn_lo, note."""
+    try:
+        page = json.loads(page_json)
+    except ValueError as e:
+        return json.dumps({"error": f"JSON invalido: {e}"})
+    return call("/api/ui/page", {"page": page})
+
+
+@mcp.tool()
+def ui_set(ui_json: str) -> str:
+    """Sustituye el panel completo ({"pages":[...]}). Se guarda una copia previa en ui_layout.prev.json."""
+    try:
+        ui = json.loads(ui_json)
+    except ValueError as e:
+        return json.dumps({"error": f"JSON invalido: {e}"})
+    return call("/api/ui", {"ui": ui})
+
+
+@mcp.tool()
+def memory_get() -> str:
+    """Tu memoria entre sesiones (tools/ia_memoria.md): lo que ya sabes del coche."""
+    return call("/api/memory")
+
+
+@mcp.tool()
+def memory_add(text: str, section: str = "Notas") -> str:
+    """Anade una entrada a tu memoria (breve: hallazgos, hipotesis, pendientes)."""
+    return call("/api/memory", {"text": text, "section": section})
 
 
 if __name__ == "__main__":

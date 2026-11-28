@@ -6,6 +6,7 @@ import ddt_db
 
 TMP = Path(tempfile.mkdtemp())
 w.LOGS, w.LOG, w.DECODE = TMP, TMP / "web.jsonl", TMP / "decode.json"  # no tocar logs/ ni la tabla real
+w.clio_drive.UI_FILE, w.clio_drive.MEMORY_FILE = TMP / "ui.json", TMP / "mem.md"
 
 ECU = {"ecuname": "TEST_DDCR", "endian": "Big", "obd": {"protocol": "KWP2000", "funcaddr": "7A"},
        "requests": [{"name": "Lecture A1", "sentbytes": "21A1", "receivebyte_dataitems": {"Regime": {"firstbyte": 3}}},
@@ -69,7 +70,7 @@ def test_sim_api():
     except ValueError:
         pass
     scan = w.api("/api/ecu_scan", {}, {})
-    assert scan["7A"]["ok"] and scan["26"]["ok"] and not scan["28"]["ok"] and w.state["ecu"] == "7A"
+    assert scan["7A"]["ok"] and scan["26"]["ok"] and scan["28"]["ok"] and not scan["2C"]["ok"] and w.state["ecu"] == "7A"
 
 
 def test_db_api():
@@ -78,7 +79,7 @@ def test_db_api():
     rq = {r["name"]: r for r in w.api("/api/db/requests", {}, {})["requests"]}
     assert rq["Lecture A1"]["lectura"] and not rq["Ecriture CF582"]["lectura"]
     v = w.api("/api/db/read", {}, {"name": "Lecture A1"})["values"][0]
-    assert 800 <= int(v["value"]) <= 1000, v  # rpm del simulador, little endian
+    assert 800 <= int(v["value"]) <= 5000, v  # rpm del simulador, little endian
     try:
         w.api("/api/db/read", {}, {"name": "Ecriture CF582"})
         raise AssertionError("3B no bloqueado")
@@ -94,7 +95,7 @@ def test_learn():
     w.api("/api/decode", {}, {"lid": "A1", "name": "rpm", "byte": 0, "len": 2, "le": True, "unit": "rpm"})
     w.api("/api/decode", {}, {"lid": "A1", "name": "flag", "byte": 0, "bit": 0})
     dec = {x["name"]: x for x in w.api("/api/live", {"lids": ["A1"]}, {})["lids"]["A1"]["decoded"]}
-    assert 800 <= dec["rpm"]["value"] <= 1000 and dec["flag"]["value"] in (0, 1)
+    assert 800 <= dec["rpm"]["value"] <= 5000 and dec["flag"]["value"] in (0, 1)
     w.api("/api/decode", {}, {"lid": "A1", "name": "flag", "byte": 0, "delete": True})
     assert [p["name"] for p in w.api("/api/decode", {}, {})["A1"]] == ["rpm"]
     w.api("/api/learn/start", {}, {"name": "t", "lids": "A1", "period_ms": 50, "label": "reposo"})
@@ -118,7 +119,7 @@ def test_explore_and_ask():
             break
         time.sleep(0.1)
     res = json.loads((TMP / w.api("/api/job", {}, {})["file"]).read_text(encoding="utf-8"))
-    assert res["7A"]["responde"] and not res["28"]["responde"] and set(res["7A"]["lids"]) == {"80", "A0", "A1", "A2"}
+    assert res["7A"]["responde"] and res["28"]["responde"] and not res["2C"]["responde"] and set(res["7A"]["lids"]) == {"80", "A0", "A1", "A2"}
     assert res["7A"]["analisis"]["A1"]["muestras"] > 0 and w.state["ecu"] == "7A"
     threading.Timer(0.3, lambda: w.api("/api/ai/answer", {}, {"answer": "hecho"})).start()
     assert w.api("/api/ai/ask", {}, {"text": "Pisa el freno", "timeout": 5})["answer"] == "hecho"
@@ -137,6 +138,77 @@ def test_ai_reader():
     w._ai_reader(p, TMP / "ai.log")
     log = w.state["ai"]["log"]
     assert log[0] == "💬 Leo la ident" and log[1].startswith("🔧 ident") and "6180" in log[2] and log[3].startswith("✅"), log
+
+
+def test_drive_mode():
+    """Modo coche con el simulador: registro continuo con otra UCE, eventos, panel, memoria y descubrimiento."""
+    w.api("/api/connect", {}, {"backend": "sim", "ecu": "7A"})
+    w.api("/api/decode", {}, {"lid": "A1", "name": "rpm", "byte": 0, "len": 2, "le": True, "unit": "rpm"})
+    w.drive.plan["other_every_s"] = 1
+    w.api("/api/drive/start", {}, {"plan": {"main_lids": ["A1", "A2"], "period_ms": 20, "dtc_every_s": 0.5,
+                                            "others": [{"ecu": "28", "lids": ["A0"], "dtc": False}]}})
+    time.sleep(3)
+    st = w.api("/api/drive/status", {}, {})
+    assert st["running"] and st["samples"] > 30, st
+    lat = w.api("/api/drive/latest", {}, {})
+    assert "7A:A1" in lat and "28:A0" in lat and w.state["ecu"] in ("7A", "28")
+    vals = w.api("/api/drive/values", {"keys": ["7A:A1:rpm,7A:A2:b7.0,7A:A1:u0,28:A0:u0"]}, {})
+    assert 800 <= vals["7A:A1:rpm"] <= 5000 and vals["7A:A2:b7.0"] in (0, 1) and vals["7A:A1:u0"] == vals["7A:A1:rpm"]
+    ser = w.api("/api/drive/series", {"key": ["7A:A1:rpm"], "n": ["50"]}, {})["7A:A1:rpm"]
+    assert len(ser) > 10 and ser[0][0] <= ser[-1][0]
+    assert any(e["kind"] == "averia" for e in w.api("/api/events", {"minutes": ["5"]}, {})["events"])
+    assert w.api("/api/drive/summary", {}, {})["canales_que_varian"]
+    w.api("/api/drive/stop", {}, {})
+    time.sleep(0.3)
+    d = w.api("/api/discover", {}, {})
+    assert "7A:A1" in d["lids"] and d["lids"]["7A:A1"]["canales"], d
+    # el panel: validación, página nueva y copia previa
+    ui = w.api("/api/ui", {}, {})
+    assert ui["pages"]
+    w.api("/api/ui/page", {}, {"page": {"id": "nueva", "title": "Nueva", "widgets": [{"type": "gauge", "key": "7A:A1:rpm"}]}})
+    assert "nueva" in [p["id"] for p in w.api("/api/ui", {}, {})["pages"]]
+    try:
+        w.api("/api/ui/page", {}, {"page": {"id": "x", "widgets": [{"type": "escribir_uce"}]}})
+        raise AssertionError("widget desconocido aceptado")
+    except ValueError:
+        pass
+    w.api("/api/memory", {}, {"text": "rpm = A1 u16 byte 0", "section": "Variables"})
+    assert "rpm = A1" in w.api("/api/memory", {}, {})["text"]
+    assert w.api("/api/ai/auto", {}, {"enabled": False, "interval_min": 15})["interval_min"] == 15
+
+
+def test_analyze_drive_correlation():
+    fn = TMP / "drive_test.jsonl"
+    with open(fn, "w") as f:
+        for i in range(200):
+            rpm = 900 + i * 10
+            data = rpm.to_bytes(2, "little") + bytes([i % 256, (rpm // 40) & 0xFF, 7, 1 if i % 50 < 10 else 0])
+            f.write(json.dumps({"t": i * 0.1, "ecu": "7A", "lid": "A1", "r": "61A1" + data.hex().upper(), "v": {}}) + "\n")
+    d = w.clio_drive.analyze_drive(fn)
+    ch = d["lids"]["7A:A1"]["canales"]
+    assert ch["b2"]["tipo"] == "contador" and "b4" not in ch and "u0" in ch
+    assert any({p["a"], p["b"]} >= {"7A:A1:u0", "7A:A1:b3"} for p in d["parejas_correlacionadas"]), d["parejas_correlacionadas"]
+    assert any(b["canal"] == "7A:A1:b5.0" for b in d["bits"])
+
+
+def test_discover_bridge():
+    """El puente contesta 'CLIO <ip> <placa>' a 'CLIO?' por UDP; sin puente, se usa su AP 192.168.4.1."""
+    u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    u.bind(("127.0.0.1", 0))
+    def esp():
+        d, a = u.recvfrom(16)
+        if d == b"CLIO?":
+            u.sendto(b"CLIO 127.0.0.1 esp01", a)
+    threading.Thread(target=esp, daemon=True).start()
+    real = w.socket.socket
+    class S(real):  # redirige la difusión al falso ESP local
+        def sendto(self, data, addr):
+            return super().sendto(data, u.getsockname())
+    w.socket.socket = S
+    try:
+        assert w.discover_bridge(1) == "127.0.0.1"
+    finally:
+        w.socket.socket = real
 
 
 def fake_bridge(srv):
